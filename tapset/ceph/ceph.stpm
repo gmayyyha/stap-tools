@@ -1,0 +1,5 @@
+@define	BIN_MON %( "/usr/bin/ceph-mon" %)
+@define	BIN_MGR %( "/usr/bin/ceph-mgr" %)
+@define	BIN_OSD %( "/usr/bin/ceph-osd" %)
+@define	BIN_MDS %( "/usr/bin/ceph-mds" %)
+@define	BIN_FUSE %( "/usr/bin/ceph-fuse" %)

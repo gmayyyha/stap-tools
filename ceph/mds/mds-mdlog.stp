@@ -1,0 +1,57 @@
+#!/usr/bin/env stap 
+
+/*
+ * USAGE: stap -g -v mds-mdlog.stp -I ../../tapset/ceph --ldd | c++filt
+ *
+ */
+
+global MAX_MDS = 0x100;
+global MDS_INO_LOG_OFFSET = 0x200;  # 2*MAX_MDS
+global MDS_INO_PURGE_QUEUE = 0x500; # 5*MAX_MDS
+
+
+probe	process(@BIN_MDS).function("Journaler::_do_flush")
+{
+	object_size = $this->layout->object_size;
+	su = $this->layout->stripe_unit;
+	stripe_count = $this->layout->stripe_count;
+	stripes_per_object = object_size / su;
+
+	offset = $this->write_pos;
+
+	blockno = offset / su;
+	stripeno = blockno / stripe_count;
+	stripepos = blockno % stripe_count;
+	objectsetno = stripeno / stripes_per_object;
+	objectno = objectsetno * stripe_count + stripepos;
+
+	ino = $this->ino->val;
+	oid = object_id(ino, objectno);
+
+	printf("rank: %d\t\toid: %s\twrite_pos: %d\n", mds_rank(ino), oid, $this->write_pos);
+	print_ubacktrace();
+	println();
+}
+
+
+/*
+ * //TODO
+ */
+function mds_rank:long(ino:long)
+{
+    if (ino < MDS_INO_PURGE_QUEUE)
+        return (ino - MDS_INO_LOG_OFFSET);
+    else
+        return (ino - MDS_INO_PURGE_QUEUE);
+}
+
+function object_id:string(ino:long, objectno:long) 
+%{
+	char buf[32];
+	char oid[64];
+
+	snprintf(buf, sizeof(buf), "%llx.%%08llx", (long long unsigned)STAP_ARG_ino);
+	snprintf(oid, sizeof(oid), buf, (long long unsigned)STAP_ARG_objectno);
+
+	STAP_RETURN(oid);
+%}

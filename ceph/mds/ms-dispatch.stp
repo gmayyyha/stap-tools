@@ -1,0 +1,87 @@
+/*
+ *  
+ * USAGE: stap -v ms-dispatch.stp -I ../../tapset/ceph
+ *
+ */
+
+
+global flow;
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2")
+{
+	flow[tid()] = 1;
+	printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+}
+
+probe   process(@BIN_MDS).function("MDSRank::*").call
+,       process(@BIN_MDS).function("Server::*").call
+,       process(@BIN_MDS).function("MDBalancer::*").call
+,       process(@BIN_MDS).function("Migrator::*").call
+,       process(@BIN_MDS).function("MDSTableServer::*").call
+,       process(@BIN_MDS).function("MDSTable::*").call
+,       process(@BIN_MDS).function("InoTable::*").call
+,       process(@BIN_MDS).function("SessionMap::*").call
+,       process(@BIN_MDS).function("MDCache::*").call
+,       process(@BIN_MDS).function("InoTable::*").call
+,       process(@BIN_MDS).function("MDLog::*").call
+,       process(@BIN_MDS).function("LogSegment::*").call
+,       process(@BIN_MDS).function("CInode::*").call
+,       process(@BIN_MDS).function("CDentry::*").call
+,       process(@BIN_MDS).function("CDir::*").call
+,       process(@BIN_MDS).function("Locker::*").call
+,       process(@BIN_MDS).function("C_*::*").call
+,       process(@BIN_MDS).function("MonClient::*").call
+{
+        if (flow[tid()]) {
+                printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+        }
+}
+
+probe   process(@BIN_MDS).function("MDSRank::*").return
+,       process(@BIN_MDS).function("Server::*").return
+,       process(@BIN_MDS).function("MDBalancer::*").return
+,       process(@BIN_MDS).function("Migrator::*").return
+,       process(@BIN_MDS).function("MDSTableServer::*").return
+,       process(@BIN_MDS).function("MDSTable::*").return
+,       process(@BIN_MDS).function("InoTable::*").return
+,       process(@BIN_MDS).function("SessionMap::*").return
+,       process(@BIN_MDS).function("MDCache::*").return
+,       process(@BIN_MDS).function("InoTable::*").return
+,       process(@BIN_MDS).function("MDLog::*").return
+,       process(@BIN_MDS).function("LogSegment::*").return
+,       process(@BIN_MDS).function("CInode::*").return
+,       process(@BIN_MDS).function("CDentry::*").return
+,       process(@BIN_MDS).function("CDir::*").return
+,       process(@BIN_MDS).function("Locker::*").return
+,       process(@BIN_MDS).function("C_*::*").return
+,       process(@BIN_MDS).function("MonClient::*").return
+{
+        if (flow[tid()]) {
+                printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+        }
+}
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2").return
+{
+	if (flow[tid()]) {
+		flow[tid()] = 0;
+                printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+		println();
+	}
+}
+
+probe process(@BIN_MDS).function("lock_guard")
+{
+	if (flow[tid()]) {
+		printf("%s\t%s\n", ppfunc(), $$parms$$);
+	}
+}
+
+
+probe process(@BIN_MDS).function("~lock_guard")
+{
+	if (flow[tid()]) {
+		printf("%s\t%s\n", ppfunc(), $$parms$$);
+	}
+}
+
