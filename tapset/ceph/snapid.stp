@@ -1,0 +1,13 @@
+global snapid_names;
+
+probe init
+{
+    snapid_names[-1] = "snapdir";
+    snapid_names[-2] = "head";
+    snapid_names[-3] = "CEPH_MAXSNAP";
+}
+
+function get_snapid_name:string(snapid:long)
+{
+    return (snapid in snapid_names) ? snapid_names[snapid] : sprintf("0x%x", snapid);
+}

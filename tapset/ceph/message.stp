@@ -1,0 +1,285 @@
+global	cephmsg_names;
+global	cephmsg_mon_paxos_ops;
+global	cephmsg_mon_election_ops;
+global	cephmsg_mon_probe_ops;
+
+/*
+ * message types
+ */
+probe	init
+{
+	/* misc */
+        cephmsg_names[1] = "CEPH_MSG_SHUTDOWN";
+        cephmsg_names[2] = "CEPH_MSG_PING";
+
+        /* client <-> monitor */
+        cephmsg_names[4] = "CEPH_MSG_MON_MAP";
+        cephmsg_names[5] = "CEPH_MSG_MON_GET_MAP";
+        cephmsg_names[13] = "CEPH_MSG_STATFS";
+        cephmsg_names[14] = "CEPH_MSG_STATFS_REPLY";
+        cephmsg_names[15] = "CEPH_MSG_MON_SUBSCRIBE";
+        cephmsg_names[16] = "CEPH_MSG_MON_SUBSCRIBE_ACK";
+        cephmsg_names[17] = "CEPH_MSG_AUTH";
+        cephmsg_names[18] = "CEPH_MSG_AUTH_REPLY";
+        cephmsg_names[19] = "CEPH_MSG_MON_GET_VERSION";
+        cephmsg_names[20] = "CEPH_MSG_MON_GET_VERSION_REPLY";
+
+        /* client <-> mds */
+        cephmsg_names[21] = "CEPH_MSG_MDS_MAP";
+
+        cephmsg_names[22] = "CEPH_MSG_CLIENT_SESSION";
+        cephmsg_names[23] = "CEPH_MSG_CLIENT_RECONNECT";
+
+        cephmsg_names[24] = "CEPH_MSG_CLIENT_REQUEST";
+        cephmsg_names[25] = "CEPH_MSG_CLIENT_REQUEST_FORWARD";
+        cephmsg_names[26] = "CEPH_MSG_CLIENT_REPLY";
+        cephmsg_names[0x310] = "CEPH_MSG_CLIENT_CAPS";
+        cephmsg_names[0x311] = "CEPH_MSG_CLIENT_LEASE";
+        cephmsg_names[0x312] = "CEPH_MSG_CLIENT_SNAP";
+        cephmsg_names[0x313] = "CEPH_MSG_CLIENT_CAPRELEASE";
+
+        /* pool ops */
+        cephmsg_names[48] = "CEPH_MSG_POOLOP_REPLY";
+        cephmsg_names[49] = "CEPH_MSG_POOLOP";	
+
+	/* osd */
+        cephmsg_names[41] = "CEPH_MSG_OSD_MAP";
+        cephmsg_names[42] = "CEPH_MSG_OSD_OP";
+        cephmsg_names[43] = "CEPH_MSG_OSD_OPREPLY";
+        cephmsg_names[44] = "CEPH_MSG_WATCH_NOTIFY";
+	cephmsg_names[61] = "CEPH_MSG_OSD_BACKOFF";
+
+	/* monitor internal */
+	cephmsg_names[64] = "MSG_MON_SCRUB";
+        cephmsg_names[65] = "MSG_MON_ELECTION";
+        cephmsg_names[66] = "MSG_MON_PAXOS";
+        cephmsg_names[67] = "MSG_MON_PROBE";
+        cephmsg_names[68] = "MSG_MON_JOIN";
+        cephmsg_names[69] = "MSG_MON_SYNC";
+
+	/* monitor <-> mon admin tool */
+	cephmsg_names[50] = "MSG_MON_COMMAND";
+        cephmsg_names[51] = "MSG_MON_COMMAND_ACK";
+        cephmsg_names[52] = "MSG_LOG";
+        cephmsg_names[53] = "MSG_LOGACK";
+
+	cephmsg_names[58] = "MSG_GETPOOLSTATS";
+        cephmsg_names[59] = "MSG_GETPOOLSTATSREPLY";
+
+	cephmsg_names[60] = "MSG_MON_GLOBAL_ID";
+
+	cephmsg_names[47] = "MSG_ROUTE";
+        cephmsg_names[46] = "MSG_FORWARD";
+
+	cephmsg_names[40] = "MSG_PAXOS";
+
+        cephmsg_names[62] = "MSG_CONFIG";
+        cephmsg_names[63] = "MSG_GET_CONFIG";
+
+	cephmsg_names[76] = "MSG_MON_GET_PURGED_SNAPS";
+        cephmsg_names[77] = "MSG_MON_GET_PURGED_SNAPS_REPLY";
+
+	/* osd internal */
+	cephmsg_names[70] = "MSG_OSD_PING";
+        cephmsg_names[71] = "MSG_OSD_BOOT";
+        cephmsg_names[72] = "MSG_OSD_FAILURE";
+        cephmsg_names[73] = "MSG_OSD_ALIVE";
+        cephmsg_names[74] = "MSG_OSD_MARK_ME_DOWN";
+        cephmsg_names[75] = "MSG_OSD_FULL";
+        cephmsg_names[123] = "MSG_OSD_MARK_ME_DEAD";
+
+// removed right after luminous
+//#define MSG_OSD_SUBOP        76
+//#define MSG_OSD_SUBOPREPLY   77
+
+	cephmsg_names[78] = "MSG_OSD_PGTEMP";
+        cephmsg_names[79] = "MSG_OSD_BEACON";
+
+        cephmsg_names[80] = "MSG_OSD_PG_NOTIFY";
+        cephmsg_names[130] = "MSG_OSD_PG_NOTIFY2";
+        cephmsg_names[81] = "MSG_OSD_PG_QUERY";
+        cephmsg_names[131] = "MSG_OSD_PG_QUERY2";
+        cephmsg_names[82] = "MSG_OSD_PG_SUMMARY";
+        cephmsg_names[83] = "MSG_OSD_PG_LOG";
+        cephmsg_names[84] = "MSG_OSD_PG_REMOVE";
+        cephmsg_names[85] = "MSG_OSD_PG_INFO";
+        cephmsg_names[132] = "MSG_OSD_PG_INFO2";
+        cephmsg_names[86] = "MSG_OSD_PG_TRIM";
+
+        cephmsg_names[87] = "MSG_PGSTATS";
+        cephmsg_names[88] = "MSG_PGSTATSACK";
+
+        cephmsg_names[89] = "MSG_OSD_PG_CREATE";
+        cephmsg_names[90] = "MSG_REMOVE_SNAPS";
+
+        cephmsg_names[91] = "MSG_OSD_SCRUB";
+        cephmsg_names[92] = "MSG_OSD_PG_MISSING";
+        cephmsg_names[93] = "MSG_OSD_REP_SCRUB";
+
+        cephmsg_names[94] = "MSG_OSD_PG_SCAN";
+        cephmsg_names[95] = "MSG_OSD_PG_BACKFILL";
+
+        cephmsg_names[97] = "MSG_COMMAND";
+        cephmsg_names[98] = "MSG_COMMAND_REPLY";
+
+        cephmsg_names[99] = "MSG_OSD_BACKFILL_RESERVE";
+        cephmsg_names[150] = "MSG_OSD_RECOVERY_RESERVE";
+        cephmsg_names[151] = "MSG_OSD_FORCE_RECOVERY";
+
+        cephmsg_names[105] = "MSG_OSD_PG_PUSH";
+        cephmsg_names[106] = "MSG_OSD_PG_PULL";
+        cephmsg_names[107] = "MSG_OSD_PG_PUSH_REPLY";
+
+        cephmsg_names[108] = "MSG_OSD_EC_WRITE";
+        cephmsg_names[109] = "MSG_OSD_EC_WRITE_REPLY";
+        cephmsg_names[110] = "MSG_OSD_EC_READ";
+        cephmsg_names[111] = "MSG_OSD_EC_READ_REPLY";
+
+        cephmsg_names[112] = "MSG_OSD_REPOP";
+        cephmsg_names[113] = "MSG_OSD_REPOPREPLY";
+        cephmsg_names[114] = "MSG_OSD_PG_UPDATE_LOG_MISSING";
+        cephmsg_names[115] = "MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY";
+
+	cephmsg_names[116] = "MSG_OSD_PG_CREATED";
+        cephmsg_names[117] = "MSG_OSD_REP_SCRUBMAP";
+        cephmsg_names[118] = "MSG_OSD_PG_RECOVERY_DELETE";
+        cephmsg_names[119] = "MSG_OSD_PG_RECOVERY_DELETE_REPLY";
+        cephmsg_names[120] = "MSG_OSD_PG_CREATE2";
+        cephmsg_names[121] = "MSG_OSD_SCRUB2";
+
+        cephmsg_names[122] = "MSG_OSD_PG_READY_TO_MERGE";
+
+        cephmsg_names[133] = "MSG_OSD_PG_LEASE";
+        cephmsg_names[134] = "MSG_OSD_PG_LEASE_ACK";
+
+	/** MDS **/
+	cephmsg_names[100] = "MSG_MDS_BEACON";
+        cephmsg_names[101] = "MSG_MDS_SLAVE_REQUEST";
+        cephmsg_names[102] = "MSG_MDS_TABLE_REQUEST";
+
+        cephmsg_names[0x200] = "MSG_MDS_RESOLVE";	// 0x2xx are for mdcache of mds
+        cephmsg_names[0x201] = "MSG_MDS_RESOLVEACK";
+        cephmsg_names[0x202] = "MSG_MDS_CACHEREJOIN";
+        cephmsg_names[0x203] = "MSG_MDS_DISCOVER";
+        cephmsg_names[0x204] = "MSG_MDS_DISCOVERREPLY";
+        cephmsg_names[0x205] = "MSG_MDS_INODEUPDATE";
+        cephmsg_names[0x206] = "MSG_MDS_DIRUPDATE";
+        cephmsg_names[0x207] = "MSG_MDS_CACHEEXPIRE";
+        cephmsg_names[0x208] = "MSG_MDS_DENTRYUNLINK";
+        cephmsg_names[0x209] = "MSG_MDS_FRAGMENTNOTIFY";
+        cephmsg_names[0x20a] = "MSG_MDS_OFFLOAD_TARGETS";
+        cephmsg_names[0x20c] = "MSG_MDS_DENTRYLINK";
+        cephmsg_names[0x20d] = "MSG_MDS_FINDINO";
+        cephmsg_names[0x20e] = "MSG_MDS_FINDINOREPLY";
+        cephmsg_names[0x20f] = "MSG_MDS_OPENINO";
+        cephmsg_names[0x210] = "MSG_MDS_OPENINOREPLY";
+        cephmsg_names[0x211] = "MSG_MDS_SNAPUPDATE";
+        cephmsg_names[0x212] = "MSG_MDS_FRAGMENTNOTIFYACK"
+
+        cephmsg_names[0x300] = "MSG_MDS_LOCK";
+        cephmsg_names[0x301] = "MSG_MDS_INODEFILECAPS";
+        cephmsg_names[0x302] = "MSG_MDS_METRICS";
+        cephmsg_names[0x303] = "MSG_MDS_PING";
+
+        cephmsg_names[0x449] = "MSG_MDS_EXPORTDIRDISCOVER";
+        cephmsg_names[0x450] = "MSG_MDS_EXPORTDIRDISCOVERACK";
+        cephmsg_names[0x451] = "MSG_MDS_EXPORTDIRCANCEL";
+        cephmsg_names[0x452] = "MSG_MDS_EXPORTDIRPREP";
+        cephmsg_names[0x453] = "MSG_MDS_EXPORTDIRPREPACK";
+        cephmsg_names[0x454] = "MSG_MDS_EXPORTDIRWARNING";
+        cephmsg_names[0x455] = "MSG_MDS_EXPORTDIRWARNINGACK";
+        cephmsg_names[0x456] = "MSG_MDS_EXPORTDIR";
+        cephmsg_names[0x457] = "MSG_MDS_EXPORTDIRACK";
+        cephmsg_names[0x458] = "MSG_MDS_EXPORTDIRNOTIFY";
+        cephmsg_names[0x459] = "MSG_MDS_EXPORTDIRNOTIFYACK";
+        cephmsg_names[0x460] = "MSG_MDS_EXPORTDIRFINISH";
+
+        cephmsg_names[0x470] = "MSG_MDS_EXPORTCAPS";
+        cephmsg_names[0x471] = "MSG_MDS_EXPORTCAPSACK";
+        cephmsg_names[0x472] = "MSG_MDS_GATHERCAPS";
+
+        cephmsg_names[0x500] = "MSG_MDS_HEARTBEAT";	// for mds load balancer
+	cephmsg_names[0x501] = "MSG_MDS_METRICS";	// for mds metric aggregator
+        cephmsg_names[0x502] = "MSG_MDS_PING";		// for mds pinger
+
+        cephmsg_names[0x600] = "MSG_TIMECHECK";
+        cephmsg_names[0x601] = "MSG_MON_HEALTH";	
+
+	// Special
+	cephmsg_names[0x607] = "MSG_NOP";
+
+        cephmsg_names[0x608] = "MSG_MON_HEALTH_CHECKS";
+        cephmsg_names[0x609] = "MSG_TIMECHECK2";
+
+	// *** ceph-mgr <-> OSD/MDS daemons ***
+	cephmsg_names[0x700] = "MSG_MGR_OPEN";
+        cephmsg_names[0x701] = "MSG_MGR_CONFIGURE";
+        cephmsg_names[0x702] = "MSG_MGR_REPORT";
+
+	// *** ceph-mgr <-> ceph-mon ***
+	cephmsg_names[0x703] = "MSG_MGR_BEACON";
+
+	// *** ceph-mon(MgrMonitor) -> OSD/MDS daemons ***
+	cephmsg_names[0x704] = "MSG_MGR_MAP";
+	
+	// *** ceph-mon(MgrMonitor) -> ceph-mgr
+	cephmsg_names[0x705] = "MSG_MGR_DIGEST";
+
+	// *** cephmgr -> ceph-mon
+	cephmsg_names[0x706] = "MSG_MON_MGR_REPORT";
+        cephmsg_names[0x707] = "MSG_SERVICE_MAP";
+        cephmsg_names[0x708] = "MSG_MGR_CLOSE";
+        cephmsg_names[0x709] = "MSG_MGR_COMMAND";
+        cephmsg_names[0x70a] = "MSG_MGR_COMMAND_REPLY";
+
+	/* mon probe op */
+        cephmsg_mon_probe_ops[1] = "PROBE";
+        cephmsg_mon_probe_ops[2] = "REPLY";
+        cephmsg_mon_probe_ops[3] = "SLURP";
+        cephmsg_mon_probe_ops[4] = "SLURP_LATEST";
+        cephmsg_mon_probe_ops[5] = "DATA";
+        cephmsg_mon_probe_ops[6] = "MISSING_FEATURES";
+
+        /* mon election op */
+        cephmsg_mon_election_ops[1] = "PROPOSE";
+        cephmsg_mon_election_ops[2] = "ACK";
+        cephmsg_mon_election_ops[3] = "NAK";
+        cephmsg_mon_election_ops[4] = "VICTORY";
+
+        /* mon paxos op */
+        cephmsg_mon_paxos_ops[1] = "COLLECT";
+        cephmsg_mon_paxos_ops[2] = "LAST";
+        cephmsg_mon_paxos_ops[3] = "BEGIN";
+        cephmsg_mon_paxos_ops[4] = "ACCETP";
+        cephmsg_mon_paxos_ops[5] = "COMMIT";
+        cephmsg_mon_paxos_ops[6] = "LEASE";
+        cephmsg_mon_paxos_ops[7] = "LEASE_ACK";
+}
+
+
+function osd_op_dump(msg:long)
+{
+	printf("not support yet");
+}
+
+function ceph_msg_gettype:long(msg:long)
+{
+        return @cast(msg, "Message", @BIN_ALL)->header->type->v;
+}
+
+function ceph_msg_getname:string(msg:long)
+{
+        type = ceph_msg_gettype(msg);
+        return (type in cephmsg_names) ? cephmsg_names[type] : sprintf("unknown msg %d", type);
+}
+
+function ceph_msg_name:string(type:long)
+{
+        return (type in cephmsg_names) ? cephmsg_names[type] : sprintf("unknown msg %d", type);
+}
+
+
+function ceph_msg_dump(msg:long, dir:string)
+{
+	printf("not support yet");	
+}

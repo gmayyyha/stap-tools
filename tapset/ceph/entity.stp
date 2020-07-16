@@ -1,0 +1,18 @@
+global ceph_entity_names
+
+probe init
+{
+        ceph_entity_names[0x01] = "mon" ;
+        ceph_entity_names[0x02] = "mds" ;
+        ceph_entity_names[0x04] = "osd" ;
+        ceph_entity_names[0x08] = "client" ;
+        ceph_entity_names[0x10] = "mgr" ;
+        ceph_entity_names[0x20] = "auth" ;
+	ceph_entity_names[0xFF] = "any" ;
+}
+
+function ceph_entity_type_name(type:long)
+{
+        return (type in ceph_entity_names) ? ceph_entity_names[type]
+                                           : sprintf("unknown type %d", type) ;
+}
