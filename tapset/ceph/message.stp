@@ -40,7 +40,7 @@ probe	init
 
         /* pool ops */
         cephmsg_names[48] = "CEPH_MSG_POOLOP_REPLY";
-        cephmsg_names[49] = "CEPH_MSG_POOLOP";	
+        cephmsg_names[49] = "CEPH_MSG_POOLOP";
 
 	/* osd */
         cephmsg_names[41] = "CEPH_MSG_OSD_MAP";
@@ -203,7 +203,7 @@ probe	init
         cephmsg_names[0x502] = "MSG_MDS_PING";		// for mds pinger
 
         cephmsg_names[0x600] = "MSG_TIMECHECK";
-        cephmsg_names[0x601] = "MSG_MON_HEALTH";	
+        cephmsg_names[0x601] = "MSG_MON_HEALTH";
 
 	// Special
 	cephmsg_names[0x607] = "MSG_NOP";
@@ -221,7 +221,7 @@ probe	init
 
 	// *** ceph-mon(MgrMonitor) -> OSD/MDS daemons ***
 	cephmsg_names[0x704] = "MSG_MGR_MAP";
-	
+
 	// *** ceph-mon(MgrMonitor) -> ceph-mgr
 	cephmsg_names[0x705] = "MSG_MGR_DIGEST";
 
@@ -281,5 +281,5 @@ function ceph_msg_name:string(type:long)
 
 function ceph_msg_dump(msg:long, dir:string)
 {
-	printf("not support yet");	
+	printf("not support yet");
 }

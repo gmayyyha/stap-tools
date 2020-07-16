@@ -3,3 +3,5 @@
 @define	BIN_OSD %( "/usr/bin/ceph-osd" %)
 @define	BIN_MDS %( "/usr/bin/ceph-mds" %)
 @define	BIN_FUSE %( "/usr/bin/ceph-fuse" %)
+
+@define	BIN_ALL %( "/usr/bin/ceph-mon:/usr/bin/ceph-mgr:/usr/bin/ceph-osd:/usr/bin/ceph-mds:/usr/bin/ceph-fuse" %)
