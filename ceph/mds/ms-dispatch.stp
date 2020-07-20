@@ -7,9 +7,7 @@
 
 global flow;
 
-probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2") !,
-	process(@BIN_MDS).function("MDSDaemon::ms_dispatch") ?
-
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch")
 {
 	flow[tid()] = 1;
 	printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
@@ -63,12 +61,20 @@ probe   process(@BIN_MDS).function("MDSRank::*").return
         }
 }
 
-probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2").return !,
-	process(@BIN_MDS).function("MDSDaemon::ms_dispatch2").return ?
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch").return
 {
 	if (flow[tid()]) {
 		flow[tid()] = 0;
                 printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
 		println();
 	}
+}
+
+
+probe   process(@BIN_MDS).function("Mutex::Lock")
+,       process(@BIN_MDS).function("Mutex::Unlock")
+{
+        if (flow[tid()]) {
+                printf("%s\t%s\n", ppfunc(), user_string($this->name->_M_dataplus->_M_p));
+        }
 }
