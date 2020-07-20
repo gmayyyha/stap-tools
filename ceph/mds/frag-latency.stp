@@ -1,0 +1,220 @@
+global  scenario_tbl;
+global  latency_tbl;
+
+global  latency_stat;
+
+global  all_probes;
+
+global  startprobe;
+global  sp_timestamp;
+
+global  PFLAG_LATENCY   = 0x0001;
+global  PFLAG_START     = 0x0002;
+global  PFLAG_STOP      = 0x0004;
+
+
+function probe_name:string (provider:string, func:string)
+{
+	if (provider == "")
+		return func;
+	return sprintf("%s::%s", provider, func);
+}
+
+function probe_register(provider:string, func:string)
+{
+	all_probes[probe_name(provider, func)] = 0;
+}
+
+function probe_flags(provider:string, func:string)
+{
+	return all_probes[probe_name(provider, func)];
+}
+
+function latency_register(pa:string, fa:string, pb:string, fb:string, desc:string)
+{
+	latency_tbl[probe_name(pa, fa), probe_name(pb, fb)] = desc;
+	all_probes[probe_name(pb, fb)] |= PFLAG_LATENCY;
+}
+
+function scenario_register(pa:string, fa:string, pb:string, fb:string)
+{
+	scenario_tbl[probe_name(pa, fa), probe_name(pb, fb)] = 1;
+	all_probes[probe_name(pa, fa)] |= PFLAG_START;
+	all_probes[probe_name(pb, fb)] |= PFLAG_STOP;
+}
+
+function timestamp_start(val:string, provider:string, func:string)
+{
+	if (val in startprobe) {
+		printf("error: duped val start probe %s for val %s\n",
+		startprobe[val], val);
+	} else {
+		startprobe[val] = probe_name(provider, func);
+	}
+}
+
+function timestamp_set(val:string, provider:string, func:string)
+{
+	if (val in startprobe) {
+		sp_timestamp[val, probe_name(provider, func)] = gettimeofday_us();
+	}
+}
+
+function timestamp_stop(val:string)
+{
+	delete startprobe[val];
+	foreach ([pf] in all_probes) {
+		delete sp_timestamp[val, pf];
+	}
+
+	k = 0;
+	foreach ([v, p] in sp_timestamp) {
+		printf("remained ts: %s %s\n", v, p);
+		k++;
+	}
+
+	if (k)
+		println();
+}
+
+function timestamp_can_stop:long (val:string, provider:string, func:string)
+{
+	start = startprobe[val];
+	stop = probe_name(provider, func);
+
+	return ([start, stop] in scenario_tbl) ? 1 : 0;
+}
+
+function latency_set(val:string, provider:string, func:string)
+{
+	mypf = probe_name(provider, func);
+
+	foreach ([pfa, pfb] in latency_tbl) {
+		if (mypf != pfb)
+			    continue;
+		if ([val, pfa] in sp_timestamp &&
+			[val, pfb] in sp_timestamp) {
+			latency_stat[pfa, pfb] <<< sp_timestamp[val, pfb] - sp_timestamp[val, pfa];
+		}
+	}
+}
+
+function latency_report()
+{
+	foreach ([pfa, pfb] in latency_stat) {
+		printf("[%s] time(us) histgram\n", latency_tbl[pfa, pfb]);
+		printf("min: %d, max: %d, avg: %d\n", @min(latency_stat[pfa, pfb]),
+						      @max(latency_stat[pfa, pfb]),
+						      @avg(latency_stat[pfa, pfb]));
+		print(@hist_log(latency_stat[pfa, pfb]));
+	}
+
+	delete latency_stat;
+}
+
+probe   begin
+{
+	probe_register("MDCache", "fragment_frozen");
+	probe_register("MDCache", "_fragment_logged");
+	probe_register("MDCache", "_fragment_stored");
+	probe_register("MDCache", "_fragment_committed");
+	probe_register("MDCache", "_fragment_old_purged");
+	probe_register("MDCache", "finish_uncommitted_fragment");
+
+	scenario_register("MDCache", "fragment_frozen",
+			  "MDCache", "finish_uncommitted_fragment");
+
+	latency_register("MDCache", "fragment_frozen",
+			 "MDCache", "_fragment_logged",
+			 "fragment_frozen -> _fragment_logged");
+
+	latency_register("MDCache", "_fragment_logged",
+			 "MDCache", "_fragment_stored",
+			 "_fragment_logged -> _fragment_stored");
+
+	latency_register("MDCache", "_fragment_stored",
+			 "MDCache", "_fragment_committed",
+			 "_fragment_stored -> _fragment_committed");
+
+	latency_register("MDCache", "_fragment_committed",
+			 "MDCache", "_fragment_old_purged",
+			 "_fragment_committed -> _fragment_old_purged");
+
+	latency_register("MDCache", "_fragment_old_purged",
+			 "MDCache", "finish_uncommitted_fragment",
+			 "_fragment_old_purged -> finish_uncommitted_fragment");
+
+	latency_register("MDCache", "fragment_frozen",
+			 "MDCache", "finish_uncommitted_fragment",
+			 "fragment_frozen -> finish_uncommitted_fragment");
+
+	probe_register("Migrator", "dispatch_export_dir");
+	probe_register("MDCache", "request_finish");
+
+	scenario_register("Migrator", "dispatch_export_dir",
+			  "MDCache", "request_finish");
+
+	latency_register("Migrator", "dispatch_export_dir",
+			 "MDCache", "request_finish",
+			 "dispatch_export_dir -> request_finish");	
+}
+
+probe   process(@BIN_MDS).function("MDCache::fragment_frozen")
+,       process(@BIN_MDS).function("MDCache::_fragment_logged")
+,       process(@BIN_MDS).function("MDCache::_fragment_stored")
+,       process(@BIN_MDS).function("MDCache::_fragment_committed")
+,       process(@BIN_MDS).function("MDCache::_fragment_old_purged")
+,       process(@BIN_MDS).function("MDCache::finish_uncommitted_fragment")
+{
+	if (@defined($mdr)) {
+		ino = $mdr->px->_more->fragment_base->ino->val;
+		bit = ceph_frag_bits($mdr->px->_more->fragment_base->frag->_enc);
+	} else {
+		ino = $basedirfrag->ino->val;
+		bit = ceph_frag_bits($basedirfrag->frag->_enc);
+	}
+
+	val = sprintf("0x%x,%d", ino, bit);
+	func = ppfunc();
+
+	flags = probe_flags("", func);
+	if (flags & PFLAG_START) {
+		timestamp_start(val, "", func);
+	}
+	timestamp_set(val, "", func);
+
+	if (flags & PFLAG_LATENCY) {
+		latency_set(val, "", func);
+	}
+
+	if ((flags & PFLAG_STOP) != 0 &&
+		timestamp_can_stop(val, "", func)) {
+		timestamp_stop(val);
+	}
+}
+
+probe	process(@BIN_MDS).function("Migrator::dispatch_export_dir")
+,	process(@BIN_MDS).function("MDCache::request_finish")
+{
+	tid = $mdr->px->reqid->tid;
+	func = ppfunc();
+
+	val = sprintf("%d", tid);
+
+	flags = probe_flags("", func);
+	timestamp_set(val, "", func);
+
+	if (flags & PFLAG_LATENCY) {
+		latency_set(val, "", func);
+	}
+}
+
+probe   timer.sec(1)
+{
+	latency_report();
+}
+
+function ceph_frag_bits:long (f: long)
+{
+	return f >> 24;
+}
