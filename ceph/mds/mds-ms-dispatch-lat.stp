@@ -1,0 +1,29 @@
+global msd
+global count
+global latency
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2")
+{
+        msd[tid(), ppfunc()] = gettimeofday_us();
+        count[tid(), ppfunc()] <<< 1;
+}
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2").return
+{
+        us = msd[tid(), ppfunc()];
+        latency[tid(), ppfunc()] <<< gettimeofday_us() - us;
+
+        msd[tid(), ppfunc()] = gettimeofday_us();
+}
+
+probe   timer.s(1), end
+{
+        foreach ([tid, func] in latency) {
+                printf("TID: %d\tFUNC: %s\n", tid, func);
+                printf("count: %d\n", @count(count[tid, func]));
+                print(@hist_log(latency[tid, func]));
+        }
+
+        delete count;
+        delete latency;
+}
