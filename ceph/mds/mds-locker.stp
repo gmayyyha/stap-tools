@@ -1,0 +1,139 @@
+#!/usr/bin/env stap
+
+/*
+ * USAGE: stap -v -g mds-locker.stp -I ../../tapset/ceph/ --ldd
+ *
+ */
+
+global flow;
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2")
+{
+	printf("================================================================================\n") ;
+        flow[tid()] = 1;
+        printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+}
+
+probe   process(@BIN_MDS).function("MDSDaemon::ms_dispatch2").return
+{
+        if (flow[tid()]) {
+                flow[tid()] = 0;
+                printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+		printf("--------------------------------------------------------------------------------\n");
+                println();
+        }
+}
+
+probe   process(@BIN_MDS).function("MDSLogContextBase::complete")
+,	process(@BIN_MDS).function("MDSIOContextBase::complete")
+{
+        if (!flow[tid()])
+                printf("================================================================================\n") ;
+        flow[tid()] ++;
+        printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+}
+
+probe   process(@BIN_MDS).function("MDSLogContextBase::complete").return
+,	process(@BIN_MDS).function("MDSIOContextBase::complete").return
+{
+        if (flow[tid()]) {
+                flow[tid()] -- ;
+                printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+                if (!flow[tid()])
+                        printf("--------------------------------------------------------------------------------\n");
+        }
+}
+
+probe   process(@BIN_MDS).function("MDCache::*").call
+,       process(@BIN_MDS).function("Locker::*").call
+,       process(@BIN_MDS).function("Server::*").call
+{
+        if (flow[tid()]) {
+                printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+        }
+}
+
+probe   process(@BIN_MDS).function("MDCache::*").return
+,       process(@BIN_MDS).function("Locker::*").return
+,       process(@BIN_MDS).function("Server::*").return
+{
+        if (flow[tid()]) {
+                printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+        }
+}
+
+probe	process(@BIN_MDS).function("Locker::process_request_cap_release")
+{
+	printf("ino = 0x%x\n", $item->ino->v);
+	printf("caps = %s\n", ccap_string($item->caps->v));
+	printf("wanted = %s\n", ccap_string($item->wanted->v));
+}
+
+probe   process(@BIN_MDS).function("Locker::rdlock_start")
+,   process(@BIN_MDS).function("Locker::wrlock_force")
+,   process(@BIN_MDS).function("Locker::scatter_mix")
+,   process(@BIN_MDS).function("Locker::xlock_start")
+,   process(@BIN_MDS).function("Locker::simple_lock")
+,   process(@BIN_MDS).function("Locker::simple_xlock")
+,   process(@BIN_MDS).function("Locker::simple_eval")
+,   process(@BIN_MDS).function("Locker::simple_excl")
+,   process(@BIN_MDS).function("Locker::simple_sync")
+,   process(@BIN_MDS).function("Locker::scatter_eval")
+,   process(@BIN_MDS).function("Locker::file_eval")
+,   process(@BIN_MDS).function("Locker::file_excl")
+,   process(@BIN_MDS).function("Locker::eval_gather")
+{
+	lock = $lock;
+	lock_info(lock, "start", 32);
+}
+
+probe   process(@BIN_MDS).function("Locker::rdlock_start").return
+,   process(@BIN_MDS).function("Locker::wrlock_force").return
+,   process(@BIN_MDS).function("Locker::scatter_mix").return
+,   process(@BIN_MDS).function("Locker::xlock_start").return
+,   process(@BIN_MDS).function("Locker::simple_lock").return
+,   process(@BIN_MDS).function("Locker::simple_xlock").return
+,   process(@BIN_MDS).function("Locker::simple_eval").return
+,   process(@BIN_MDS).function("Locker::simple_excl").return
+,   process(@BIN_MDS).function("Locker::simple_sync").return
+,   process(@BIN_MDS).function("Locker::scatter_eval").return
+,   process(@BIN_MDS).function("Locker::file_eval").return
+,   process(@BIN_MDS).function("Locker::file_excl").return
+,   process(@BIN_MDS).function("Locker::eval_gather").return
+{
+	lock = @entry($lock);
+	lock_info(lock, "finish", 31);
+}
+
+probe   process(@BIN_MDS).function("Locker::wrlock_start")
+{
+	lock = $op->lock;
+	lock_info(lock, "start", 32);
+}
+
+probe	process(@BIN_MDS).function("Locker::wrlock_start").return
+{
+	lock = @entry($op->lock);
+	lock_info(lock, "finish", 31);
+}
+
+function lock_info(lock:long, action:string, color:long)
+{
+	type = @cast(lock, "SimpleLock", @BIN_ALL)->type->type;
+        state = @cast(lock, "SimpleLock", @BIN_ALL)->state;
+
+	// FIXME
+	if (type < 16) {
+		file_type = "dentry";
+	} else {
+		file_type = "inode ";
+	}
+
+	ansi_set_color(color);
+	printf("%s.%s\t\t%s(%s(%d) %s) [%s]\n", ppfunc(), action,
+                                      get_sm_type_name(type),
+                                      get_lock_type_name(type), type,
+                                      get_state_name(state), file_type);
+	ansi_reset_color();
+}
+
