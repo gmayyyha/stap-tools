@@ -11,7 +11,38 @@ probe	process(@BIN_FUSE).function("Client::handle_cap_grant")
 	printf("ino = 0x%x\n", $m->px->head->ino->v);
 	printf("new_caps = %s\n", ccap_string($m->px->head->caps->v));
 	printf("issued = %s\n", ccap_string($cap->issued));
+	printf("implemented = %s\n", ccap_string($cap->implemented|$m->px->head->caps->v));
 	print_ubacktrace();
 	println();
 }
 
+probe	process(@BIN_FUSE).function("Client::send_cap")
+{
+	held = $cap->issued | $cap->implemented;
+	revoking = $cap->implemented & ~$cap->issued;
+	retain = $retain;
+	retain &= ~revoking;
+	dropping = $cap->issued & ~retain;
+
+	issued = $cap->issued;
+	issued &= retain;
+	implemented = $cap->implemented;
+	implemented &= $cap->issued | $used;
+
+	op = 5;		// CEPH_CAP_OP_UPDATE
+
+	printf("op = %s\n", ceph_cap_op_name(op));
+	printf("ino = 0x%x\n", $in->ino->val);
+	printf("used = %s\n", ccap_string($used));
+	printf("want = %s\n", ccap_string($want));
+	printf("flush = %s\n", ccap_string($flush));
+	printf("retain = %s\n", ccap_string(retain));
+	printf("held = %s\n", ccap_string(held));
+	printf("revoking = %s\n", ccap_string(revoking));
+	printf("dropping = %s\n", ccap_string(dropping));
+
+	printf("issued = %s\n", ccap_string(issued));
+	printf("implemented = %s\n", ccap_string(implemented));
+	print_ubacktrace();
+	println();
+}
