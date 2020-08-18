@@ -1,0 +1,93 @@
+/* capability bits */
+global CEPH_CAP_PIN       =  1  /* no specific capabilities beyond the pin */
+
+/* generic cap bits */
+global CEPH_CAP_GSHARED   =  1  /* client can reads */
+global CEPH_CAP_GEXCL     =  2  /* client can read and update */
+global CEPH_CAP_GCACHE    =  4  /* (file) client can cache reads */
+global CEPH_CAP_GRD       =  8  /* (file) client can read */
+global CEPH_CAP_GWR       = 16  /* (file) client can write */
+global CEPH_CAP_GBUFFER   = 32  /* (file) client can buffer writes */
+global CEPH_CAP_GWREXTEND = 64  /* (file) client can extend EOF */
+global CEPH_CAP_GLAZYIO   =128  /* (file) client can perform lazy io */
+
+/* per-lock shift */
+global CEPH_CAP_SAUTH     = 2
+global CEPH_CAP_SLINK     = 4
+global CEPH_CAP_SXATTR    = 6
+global CEPH_CAP_SFILE     = 8
+
+%{
+enum {
+    CEPH_CAP_OP_GRANT,         /* mds->client grant */
+    CEPH_CAP_OP_REVOKE,        /* mds->client revoke */
+    CEPH_CAP_OP_TRUNC,         /* mds->client trunc notify */
+    CEPH_CAP_OP_EXPORT,        /* mds has exported the cap */
+    CEPH_CAP_OP_IMPORT,        /* mds has imported the cap */
+    CEPH_CAP_OP_UPDATE,        /* client->mds update */
+    CEPH_CAP_OP_DROP,          /* client->mds drop cap bits */
+    CEPH_CAP_OP_FLUSH,         /* client->mds cap writeback */
+    CEPH_CAP_OP_FLUSH_ACK,     /* mds->client flushed */
+    CEPH_CAP_OP_FLUSHSNAP,     /* client->mds flush snapped metadata */
+    CEPH_CAP_OP_FLUSHSNAP_ACK, /* mds->client flushed snapped metadata */
+    CEPH_CAP_OP_RELEASE,       /* client->mds release (clean) cap */
+    CEPH_CAP_OP_RENEW,         /* client->mds renewal request */
+};
+%}
+
+function ceph_cap_op_name:string(op:long)
+%{
+    switch (STAP_ARG_op) {
+    case CEPH_CAP_OP_GRANT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "grant"); break;
+    case CEPH_CAP_OP_REVOKE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "revoke"); break;
+    case CEPH_CAP_OP_TRUNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "trunc"); break;
+    case CEPH_CAP_OP_EXPORT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "export"); break;
+    case CEPH_CAP_OP_IMPORT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "import"); break;
+    case CEPH_CAP_OP_UPDATE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "update"); break;
+    case CEPH_CAP_OP_DROP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "drop"); break;
+    case CEPH_CAP_OP_FLUSH: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flush"); break;
+    case CEPH_CAP_OP_FLUSH_ACK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flush_ack"); break;
+    case CEPH_CAP_OP_FLUSHSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flushsnap"); break;
+    case CEPH_CAP_OP_FLUSHSNAP_ACK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flushsnap_ack"); break;
+    case CEPH_CAP_OP_RELEASE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "release"); break;
+    case CEPH_CAP_OP_RENEW: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "renew"); break;
+    default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}
+
+
+function gcap_string:string(cap:long)
+{
+    gs = "";
+    if (cap & CEPH_CAP_GSHARED) gs.="s";
+    if (cap & CEPH_CAP_GEXCL) gs.="x";
+    if (cap & CEPH_CAP_GCACHE) gs.="c";
+    if (cap & CEPH_CAP_GRD) gs.="r";
+    if (cap & CEPH_CAP_GWR) gs.="w";
+    if (cap & CEPH_CAP_GBUFFER) gs.="b";
+    if (cap & CEPH_CAP_GWREXTEND) gs.="a";
+    if (cap & CEPH_CAP_GLAZYIO) gs.="l";
+    return gs;
+}
+
+function ccap_string:string(cap:long)
+{
+    cs = "";
+    if (cap & CEPH_CAP_PIN) cs.="p";
+    
+    a = (cap >> CEPH_CAP_SAUTH) & 3;
+    if (a) cs.="A".gcap_string(a);
+    
+    a = (cap >> CEPH_CAP_SLINK) & 3;
+    if (a) cs.="L".gcap_string(a);
+    
+    a = (cap >> CEPH_CAP_SXATTR) & 3;
+    if (a) cs.="X".gcap_string(a);
+    
+    a = cap >> CEPH_CAP_SFILE;
+    if (a) cs.="F".gcap_string(a);
+    
+    if (strlen(cs) == 0)
+      cs.="-";
+    return cs;
+}
