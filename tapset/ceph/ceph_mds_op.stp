@@ -1,0 +1,135 @@
+%{
+/* client_request */
+/*
+ * metadata ops.
+ *  & 0x001000 -> write op
+ *  & 0x010000 -> follow symlink (e.g. stat(), not lstat()).
+ &  & 0x100000 -> use weird ino/path trace
+ */
+#define CEPH_MDS_OP_WRITE        0x001000
+enum {
+    CEPH_MDS_OP_LOOKUP     = 0x00100,
+    CEPH_MDS_OP_GETATTR    = 0x00101,
+    CEPH_MDS_OP_LOOKUPHASH = 0x00102,
+    CEPH_MDS_OP_LOOKUPPARENT = 0x00103,
+    CEPH_MDS_OP_LOOKUPINO  = 0x00104,
+    CEPH_MDS_OP_LOOKUPNAME = 0x00105,
+
+    CEPH_MDS_OP_SETXATTR   = 0x01105,
+    CEPH_MDS_OP_RMXATTR    = 0x01106,
+    CEPH_MDS_OP_SETLAYOUT  = 0x01107,
+    CEPH_MDS_OP_SETATTR    = 0x01108,
+    CEPH_MDS_OP_SETFILELOCK= 0x01109,
+    CEPH_MDS_OP_GETFILELOCK= 0x00110,
+    CEPH_MDS_OP_SETDIRLAYOUT=0x0110a,
+
+    CEPH_MDS_OP_MKNOD      = 0x01201,
+    CEPH_MDS_OP_LINK       = 0x01202,
+    CEPH_MDS_OP_UNLINK     = 0x01203,
+    CEPH_MDS_OP_RENAME     = 0x01204,
+    CEPH_MDS_OP_MKDIR      = 0x01220,
+    CEPH_MDS_OP_RMDIR      = 0x01221,
+    CEPH_MDS_OP_SYMLINK    = 0x01222,
+
+    CEPH_MDS_OP_CREATE     = 0x01301,
+    CEPH_MDS_OP_OPEN       = 0x00302,
+    CEPH_MDS_OP_READDIR    = 0x00305,
+
+    CEPH_MDS_OP_LOOKUPSNAP = 0x00400,
+    CEPH_MDS_OP_MKSNAP     = 0x01400,
+    CEPH_MDS_OP_RMSNAP     = 0x01401,
+    CEPH_MDS_OP_LSSNAP     = 0x00402,
+    CEPH_MDS_OP_RENAMESNAP = 0x01403,
+
+    // internal op
+    CEPH_MDS_OP_FRAGMENTDIR= 0x01500,
+    CEPH_MDS_OP_EXPORTDIR  = 0x01501,
+    CEPH_MDS_OP_FLUSH      = 0x01502,
+    CEPH_MDS_OP_ENQUEUE_SCRUB  = 0x01503,
+    CEPH_MDS_OP_REPAIR_FRAGSTATS = 0x01504,
+    CEPH_MDS_OP_REPAIR_INODESTATS = 0x01505,
+    CEPH_MDS_OP_UPGRADE_SNAPREALM = 0x01506
+};
+
+
+/* client_session ops */
+enum {
+    CEPH_SESSION_REQUEST_OPEN,
+    CEPH_SESSION_OPEN,
+    CEPH_SESSION_REQUEST_CLOSE,
+    CEPH_SESSION_CLOSE,
+    CEPH_SESSION_REQUEST_RENEWCAPS,
+    CEPH_SESSION_RENEWCAPS,
+    CEPH_SESSION_STALE,
+    CEPH_SESSION_RECALL_STATE,
+    CEPH_SESSION_FLUSHMSG,
+    CEPH_SESSION_FLUSHMSG_ACK,
+    CEPH_SESSION_FORCE_RO,
+    // A response to REQUEST_OPEN indicating that the client should
+    // permanently desist from contacting the MDS
+    CEPH_SESSION_REJECT,
+        CEPH_SESSION_REQUEST_FLUSH_MDLOG
+};
+%}
+
+
+function ceph_mds_op_name:string(op:long)
+%{
+    switch (STAP_ARG_op) {
+    case CEPH_MDS_OP_LOOKUP:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookup"); break;
+    case CEPH_MDS_OP_LOOKUPHASH:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookuphash"); break;
+    case CEPH_MDS_OP_LOOKUPPARENT:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookupparent"); break;
+    case CEPH_MDS_OP_LOOKUPINO:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookupino"); break;
+    case CEPH_MDS_OP_LOOKUPNAME:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookupname"); break;
+    case CEPH_MDS_OP_GETATTR:  snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "getattr"); break;
+    case CEPH_MDS_OP_SETXATTR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "setxattr"); break;
+    case CEPH_MDS_OP_SETATTR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "setattr"); break;
+    case CEPH_MDS_OP_RMXATTR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "rmxattr"); break;
+    case CEPH_MDS_OP_SETLAYOUT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "setlayou"); break;
+    case CEPH_MDS_OP_SETDIRLAYOUT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "setdirlayout"); break;
+    case CEPH_MDS_OP_READDIR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "readdir"); break;
+    case CEPH_MDS_OP_MKNOD: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mknod"); break;
+    case CEPH_MDS_OP_LINK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "link"); break;
+    case CEPH_MDS_OP_UNLINK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "unlink"); break;
+    case CEPH_MDS_OP_RENAME: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "rename"); break;
+    case CEPH_MDS_OP_MKDIR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mkdir"); break;
+    case CEPH_MDS_OP_RMDIR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "rmdir"); break;
+    case CEPH_MDS_OP_SYMLINK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "symlink"); break;
+    case CEPH_MDS_OP_CREATE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "create"); break;
+    case CEPH_MDS_OP_OPEN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "open"); break;
+    case CEPH_MDS_OP_LOOKUPSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lookupsnap"); break;
+    case CEPH_MDS_OP_LSSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lssnap"); break;
+    case CEPH_MDS_OP_MKSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mksnap"); break;
+    case CEPH_MDS_OP_RMSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "rmsnap"); break;
+    case CEPH_MDS_OP_RENAMESNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "renamesnap"); break;
+    case CEPH_MDS_OP_SETFILELOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "setfilelock"); break;
+    case CEPH_MDS_OP_GETFILELOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "getfilelock"); break;
+    case CEPH_MDS_OP_FRAGMENTDIR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "fragmentdir"); break;
+    case CEPH_MDS_OP_EXPORTDIR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "exportdir"); break;
+    case CEPH_MDS_OP_FLUSH: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flush_path"); break;
+    case CEPH_MDS_OP_ENQUEUE_SCRUB: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "enqueue_scrub"); break;
+    case CEPH_MDS_OP_REPAIR_FRAGSTATS: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "repair_fragstats"); break;
+    case CEPH_MDS_OP_REPAIR_INODESTATS: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "repair_inodestats"); break;
+    default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}
+
+function ceph_session_op_name:string(op:long)
+%{
+    switch (STAP_ARG_op) {
+    case CEPH_SESSION_REQUEST_OPEN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "request_open"); break;
+    case CEPH_SESSION_OPEN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "open"); break;
+    case CEPH_SESSION_REQUEST_CLOSE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "request_close"); break;
+    case CEPH_SESSION_CLOSE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "close"); break;
+    case CEPH_SESSION_REQUEST_RENEWCAPS: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "request_renewcaps"); break;
+    case CEPH_SESSION_RENEWCAPS: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "renewcaps"); break;
+    case CEPH_SESSION_STALE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "stale"); break;
+    case CEPH_SESSION_RECALL_STATE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "recall_state"); break;
+    case CEPH_SESSION_FLUSHMSG: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flushmsg"); break;
+    case CEPH_SESSION_FLUSHMSG_ACK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "flushmsg_ack"); break;
+    case CEPH_SESSION_FORCE_RO: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "force_ro"); break;
+    case CEPH_SESSION_REJECT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "reject"); break;
+    case CEPH_SESSION_REQUEST_FLUSH_MDLOG: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "request_flushmdlog"); break;
+    default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}
