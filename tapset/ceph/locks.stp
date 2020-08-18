@@ -1,0 +1,298 @@
+%{
+/*
+ * metadata lock types.
+ *  - these are bitmasks.. we can compose them
+ *  - they also define the lock ordering by the MDS
+ *  - a few of these are internal to the mds
+ */
+#define CEPH_LOCK_DN          (1 << 0)
+#define CEPH_LOCK_DVERSION    (1 << 1)
+#define CEPH_LOCK_ISNAP       (1 << 4)  /* snapshot lock. MDS internal */
+#define CEPH_LOCK_IPOLICY     (1 << 5)  /* policy lock on dirs. MDS internal */
+#define CEPH_LOCK_IFILE       (1 << 6)
+#define CEPH_LOCK_INEST       (1 << 7)  /* mds internal */
+#define CEPH_LOCK_IDFT        (1 << 8)  /* dir frag tree */
+#define CEPH_LOCK_IAUTH       (1 << 9)
+#define CEPH_LOCK_ILINK       (1 << 10)
+#define CEPH_LOCK_IXATTR      (1 << 11)
+#define CEPH_LOCK_IFLOCK      (1 << 12)  /* advisory file locks */
+#define CEPH_LOCK_IVERSION    (1 << 13)  /* mds internal */
+
+#define CEPH_LOCK_IFIRST      CEPH_LOCK_ISNAP
+
+
+// -- lock states --
+// sync <-> lock
+enum {
+  LOCK_UNDEF = 0,
+
+  //                                    auth               rep
+  LOCK_SYNC,    // AR   R . RD L . / C .   R RD L . / C .
+  LOCK_LOCK,    // AR   R . .. . X / . .   . .. . . / . .
+
+  LOCK_PREXLOCK,    // A    . . .. . . / . .   (lock)
+  LOCK_XLOCK,       // A    . . .. . . / . .   (lock)
+  LOCK_XLOCKDONE,   // A    r p rd l x / . .   (lock)  <-- by same client only!!
+  LOCK_XLOCKSNAP,   // also revoke Fb
+  LOCK_LOCK_XLOCK,
+
+  LOCK_SYNC_LOCK,    // AR   R . .. . . / . .   R .. . . / . .
+  LOCK_LOCK_SYNC,    // A    R p rd l . / . .   (lock)  <-- lc by same client only
+
+  LOCK_EXCL,         // A    . . .. . . / c x * (lock)
+  LOCK_EXCL_SYNC,    // A    . . .. . . / c . * (lock)
+  LOCK_EXCL_LOCK,    // A    . . .. . . / . .   (lock)
+  LOCK_SYNC_EXCL,    // Ar   R . .. . . / c . * (sync->lock)
+  LOCK_LOCK_EXCL,    // A    R . .. . . / . .   (lock)
+
+  LOCK_REMOTEXLOCK,  // on NON-auth
+
+  // * = loner mode
+
+  LOCK_MIX,
+  LOCK_SYNC_MIX,
+  LOCK_SYNC_MIX2,
+  LOCK_LOCK_MIX,
+  LOCK_EXCL_MIX,
+  LOCK_MIX_SYNC,
+  LOCK_MIX_SYNC2,
+  LOCK_MIX_LOCK,
+  LOCK_MIX_LOCK2,
+  LOCK_MIX_EXCL,
+
+  LOCK_TSYN,
+  LOCK_TSYN_LOCK,
+  LOCK_TSYN_MIX,
+  LOCK_LOCK_TSYN,
+  LOCK_MIX_TSYN,
+
+  LOCK_PRE_SCAN,
+  LOCK_SCAN,
+
+  LOCK_SNAP_SYNC,
+
+  LOCK_XSYN,
+  LOCK_XSYN_EXCL,
+  LOCK_EXCL_XSYN,
+  LOCK_XSYN_SYNC,
+  LOCK_XSYN_LOCK,
+  LOCK_XSYN_MIX,
+
+  LOCK_MAX,
+};
+%}
+
+%{
+char* simplelock[LOCK_MAX] = {
+    [LOCK_SYNC]      = "{ 0,         false, LOCK_SYNC, ANY,  0,   ANY, 0,   0,   ANY, 0,   CEPH_CAP_GSHARED,0,0,CEPH_CAP_GSHARED }",
+    [LOCK_LOCK_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, AUTH, XCL, XCL, 0,   0,   XCL, 0,   0,0,0,0 }",
+    [LOCK_EXCL_SYNC] = "{ LOCK_SYNC, true,  LOCK_LOCK, 0,    0,   0,   0,   XCL, 0,   0,   0,CEPH_CAP_GSHARED,0,0 }",
+    [LOCK_SNAP_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, 0,    0,   0,   0,   AUTH,0,   0,   0,0,0,0 }",
+
+    [LOCK_LOCK]      = "{ 0,         false, LOCK_LOCK, AUTH, 0,   REQ, 0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_SYNC_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, ANY,  0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_EXCL_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   XCL, 0,   0,   0,0,0,0 }",
+
+    [LOCK_PREXLOCK]  = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    XCL, 0,   0,   0,   0,   ANY, 0,0,0,0 }",
+    [LOCK_XLOCK]     = "{ LOCK_SYNC, false, LOCK_LOCK, 0,    XCL, 0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_XLOCKDONE] = "{ LOCK_SYNC, false, LOCK_LOCK, XCL,  XCL, XCL, 0,   0,   XCL, 0,   0,0,CEPH_CAP_GSHARED,0 }",
+    [LOCK_LOCK_XLOCK]= "{ LOCK_PREXLOCK,false,LOCK_LOCK,0,   XCL, 0,   0,   0,   0,   XCL, 0,0,0,0 }",
+
+    [LOCK_EXCL]      = "{ 0,         true,  LOCK_LOCK, 0,    0,   REQ, XCL, 0,   0,   0,   0,CEPH_CAP_GEXCL|CEPH_CAP_GSHARED,0,0 }",
+    [LOCK_SYNC_EXCL] = "{ LOCK_EXCL, true,  LOCK_LOCK, ANY,  0,   0,   0,   0,   0,   0,   0,CEPH_CAP_GSHARED,0,0 }",
+    [LOCK_LOCK_EXCL] = "{ LOCK_EXCL, false, LOCK_LOCK, AUTH, 0,   0,   0,   0,   0,   0,   CEPH_CAP_GSHARED,0,0,0 }",
+
+    [LOCK_REMOTEXLOCK]="{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+};
+
+char* scatterlock[LOCK_MAX] = {
+    [LOCK_SYNC]      = "{ 0,         false, LOCK_SYNC, ANY,  0,   ANY, 0,   0,   ANY, 0,   CEPH_CAP_GSHARED,0,0,CEPH_CAP_GSHARED }",
+    [LOCK_LOCK_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, AUTH, 0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_MIX_SYNC]  = "{ LOCK_SYNC, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_SNAP_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, 0,    0,   0,   0,   AUTH,0,   0,   0,0,0,0 }",
+
+    [LOCK_LOCK]      = "{ 0,         false, LOCK_LOCK, AUTH, 0,   REQ, AUTH,0,   0,   ANY, 0,0,0,0 }",
+    [LOCK_SYNC_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, ANY,  0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_MIX_LOCK]  = "{ LOCK_LOCK, false, LOCK_MIX,  0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_MIX_LOCK2] = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_TSYN_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, AUTH, 0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+
+    [LOCK_TSYN]      = "{ 0,         false, LOCK_LOCK, AUTH, 0,   AUTH,0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_LOCK_TSYN] = "{ LOCK_TSYN, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_MIX_TSYN]  = "{ LOCK_TSYN, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+
+    [LOCK_MIX]       = "{ 0,         false, LOCK_MIX,  0,    0,   REQ, ANY, 0,   0,   0,   0,0,0,0 }",
+    [LOCK_TSYN_MIX]  = "{ LOCK_MIX,  false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_SYNC_MIX]  = "{ LOCK_MIX,  false, LOCK_SYNC_MIX2,ANY,0, 0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_SYNC_MIX2] = "{ LOCK_MIX,  false, 0,         0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+};
+
+char* filelock[LOCK_MAX] = {
+    [LOCK_SYNC]      = "{ 0,         false, LOCK_SYNC, ANY,  0,   ANY, 0,   0,   ANY, 0,   CEPH_CAP_GSHARED|CEPH_CAP_GCACHE|CEPH_CAP_GRD|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GSHARED|CEPH_CAP_GCACHE|CEPH_CAP_GRD }",
+    [LOCK_LOCK_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, AUTH, 0,   0,   0,   0,   0,   0,   CEPH_CAP_GCACHE,0,0,0 }",
+    [LOCK_EXCL_SYNC] = "{ LOCK_SYNC, true,  LOCK_LOCK, 0,    0,   0,   0,   XCL, 0,   0,   0,CEPH_CAP_GSHARED|CEPH_CAP_GCACHE|CEPH_CAP_GRD,0,0 }",
+    [LOCK_MIX_SYNC]  = "{ LOCK_SYNC, false, LOCK_MIX_SYNC2,0,0,   0,   0,   0,   0,   0,   CEPH_CAP_GRD|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GRD }",
+    [LOCK_MIX_SYNC2] = "{ LOCK_SYNC, false, 0,         0,    0,   0,   0,   0,   0,   0,   CEPH_CAP_GRD|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GRD }",
+    [LOCK_SNAP_SYNC] = "{ LOCK_SYNC, false, LOCK_LOCK, 0,    0,   0,   0,   AUTH,0,   0,   0,0,0,0 }",
+    [LOCK_XSYN_SYNC] = "{ LOCK_SYNC, true,  LOCK_LOCK, AUTH, 0,   AUTH,0,   0,   0,   0,   0,CEPH_CAP_GCACHE,0,0 }",
+
+    [LOCK_LOCK]      = "{ 0,         false, LOCK_LOCK, AUTH, 0,   REQ, AUTH,0,   0,   0,   CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0,0 }",
+    [LOCK_SYNC_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, ANY,  0,   REQ, 0,   0,   0,   0,   CEPH_CAP_GCACHE,0,0,0 }",
+    [LOCK_EXCL_LOCK] = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   XCL, 0,   0,   CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0,0 }",
+    [LOCK_MIX_LOCK]  = "{ LOCK_LOCK, false, LOCK_MIX,  0,    0,   REQ, 0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_MIX_LOCK2] = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   REQ, 0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_XSYN_LOCK] = "{ LOCK_LOCK, true,  LOCK_LOCK, AUTH, 0,   0,   XCL, 0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 }",
+
+    [LOCK_PREXLOCK]  = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    XCL, 0,   0,   0,   0,   ANY, CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0,0 }",
+    [LOCK_XLOCK]     = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    XCL, 0,   0,   0,   0,   0,   CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0,0 }",
+    [LOCK_XLOCKDONE] = "{ LOCK_LOCK, false, LOCK_LOCK, XCL,  XCL, XCL, 0,   0,   XCL, 0,   CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,CEPH_CAP_GSHARED,0 }",
+    [LOCK_XLOCKSNAP] = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    XCL, 0,   0,   0,   0,   0,   CEPH_CAP_GCACHE,0,0,0 }",
+    [LOCK_LOCK_XLOCK]= "{ LOCK_PREXLOCK,false,LOCK_LOCK,0,   XCL, 0,   0,   0,   0,   XCL, CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0,0 }",
+
+    [LOCK_MIX]       = "{ 0,         false, LOCK_MIX,  0,    0,   REQ, ANY, 0,   0,   0,   CEPH_CAP_GRD|CEPH_CAP_GWR|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GRD }",
+    [LOCK_SYNC_MIX]  = "{ LOCK_MIX,  false, LOCK_SYNC_MIX2,ANY,0, 0,   0,   0,   0,   0,   CEPH_CAP_GRD|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GRD }",
+    [LOCK_SYNC_MIX2] = "{ LOCK_MIX,  false, 0,         0,    0,   0,   0,   0,   0,   0,   CEPH_CAP_GRD|CEPH_CAP_GLAZYIO,0,0,CEPH_CAP_GRD }",
+    [LOCK_EXCL_MIX]  = "{ LOCK_MIX,  true,  LOCK_LOCK, 0,    0,   0,   XCL, 0,   0,   0,   0,CEPH_CAP_GRD|CEPH_CAP_GWR,0,0 }",
+    [LOCK_XSYN_MIX]  = "{ LOCK_MIX,  true,  LOCK_LOCK, 0,    0,   0,   XCL, 0,   0,   0,   0,0,0,0 }",
+
+    [LOCK_EXCL]      = "{ 0,         true,  LOCK_LOCK, 0,    0,   XCL, XCL, 0,   0,   0,   0,CEPH_CAP_GSHARED|CEPH_CAP_GEXCL|CEPH_CAP_GCACHE|CEPH_CAP_GRD|CEPH_CAP_GWR|CEPH_CAP_GBUFFER,0,0 }",
+    [LOCK_SYNC_EXCL] = "{ LOCK_EXCL, true,  LOCK_LOCK, ANY,  0,   0,   0,   0,   0,   0,   0,CEPH_CAP_GSHARED|CEPH_CAP_GCACHE|CEPH_CAP_GRD,0,0 }",
+    [LOCK_MIX_EXCL]  = "{ LOCK_EXCL, true,  LOCK_LOCK, 0,    0,   0,   XCL, 0,   0,   0,   0,CEPH_CAP_GRD|CEPH_CAP_GWR,0,0 }",
+    [LOCK_LOCK_EXCL] = "{ LOCK_EXCL, true,  LOCK_LOCK, AUTH, 0,   0,   0,   0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 }",
+    [LOCK_XSYN_EXCL] = "{ LOCK_EXCL, true,  LOCK_LOCK, AUTH, 0,   XCL, 0,   0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 }",
+
+    [LOCK_XSYN]      = "{ 0,         true,  LOCK_LOCK, AUTH, AUTH,AUTH,XCL, 0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 }",
+    [LOCK_EXCL_XSYN] = "{ LOCK_XSYN, false, LOCK_LOCK, 0,    0,   XCL, 0,   0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 }",
+
+    [LOCK_PRE_SCAN]  = "{ LOCK_SCAN, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+    [LOCK_SCAN]      = "{ LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 }",
+};
+
+char* locallock[LOCK_MAX] = {
+                      // stable     loner  rep state  r     rp   rd   wr   fwr  l    x    caps(any,loner,xlocker,replica)
+    [LOCK_LOCK]      = "{ 0,         false, LOCK_LOCK, ANY,  0,   ANY, 0,   0,   ANY, AUTH,0,0,0,0 }",
+};
+%}
+
+
+function get_lock_type_name:string(type:long) 
+%{
+    switch (STAP_ARG_type) {
+      case CEPH_LOCK_DN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "dn"); break;
+      case CEPH_LOCK_DVERSION: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "dversion"); break;
+      case CEPH_LOCK_IVERSION: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "iversion"); break;
+      case CEPH_LOCK_IFILE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "ifile"); break;
+      case CEPH_LOCK_IAUTH: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "iauth"); break;
+      case CEPH_LOCK_ILINK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "ilink"); break;
+      case CEPH_LOCK_IDFT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "idft"); break;
+      case CEPH_LOCK_INEST: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "inest"); break;
+      case CEPH_LOCK_IXATTR: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "ixattr"); break;
+      case CEPH_LOCK_ISNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "isnap"); break;
+      case CEPH_LOCK_IFLOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "iflock"); break;
+      case CEPH_LOCK_IPOLICY: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "ipolicy"); break;
+      default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}
+
+
+function get_state_name:string(state:long)
+%{
+    switch (STAP_ARG_state) {
+    case LOCK_UNDEF: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "UNDEF"); break;
+    case LOCK_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "sync"); break;
+    case LOCK_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lock"); break;
+
+    case LOCK_PREXLOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "prexlock"); break;
+    case LOCK_XLOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xlock"); break;
+    case LOCK_XLOCKDONE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xlockdone"); break;
+    case LOCK_XLOCKSNAP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xlocksnap"); break;
+    case LOCK_LOCK_XLOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lock->xlock"); break;
+
+    case LOCK_SYNC_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "sync->lock"); break;
+    case LOCK_LOCK_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lock->sync"); break;
+    case LOCK_REMOTEXLOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "remote_xlock"); break;
+    case LOCK_EXCL: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "excl"); break;
+    case LOCK_EXCL_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "excl->sync"); break;
+    case LOCK_EXCL_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "excl->lock"); break;
+    case LOCK_SYNC_EXCL: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "sync->excl"); break;
+    case LOCK_LOCK_EXCL: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lock->excl"); break;
+
+    case LOCK_XSYN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xsyn"); break;
+    case LOCK_XSYN_EXCL: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xsyn->excl"); break;
+    case LOCK_EXCL_XSYN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "excl->xsyn"); break;
+    case LOCK_XSYN_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xsyn->sync"); break;
+    case LOCK_XSYN_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xsyn->lock"); break;
+    case LOCK_XSYN_MIX: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "xsyn->mix"); break;
+
+    case LOCK_SYNC_MIX: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "sync->mix"); break;
+    case LOCK_SYNC_MIX2: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "sync->mix(2)"); break;
+    case LOCK_LOCK_TSYN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "lock->tsyn"); break;
+
+    case LOCK_MIX_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->lock"); break;
+    case LOCK_MIX_LOCK2: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->lock(2)"); break;
+    case LOCK_MIX: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix"); break;
+    case LOCK_MIX_TSYN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->tsyn"); break;
+
+    case LOCK_TSYN_MIX: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "tsyn->mix"); break;
+    case LOCK_TSYN_LOCK: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "tsyn->lock"); break;
+    case LOCK_TSYN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "tsyn"); break;
+
+    case LOCK_MIX_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->sync"); break;
+    case LOCK_MIX_SYNC2: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->sync(2)"); break;
+    case LOCK_EXCL_MIX: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "excl->mix"); break;
+    case LOCK_MIX_EXCL: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "mix->excl"); break;
+
+    case LOCK_PRE_SCAN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "*->scan"); break;
+    case LOCK_SCAN: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "scan"); break;
+
+    case LOCK_SNAP_SYNC: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "snap->sync"); break;
+
+    default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}
+
+function get_sm_type_name:string(type:long) 
+%{
+    switch (STAP_ARG_type) {
+    case CEPH_LOCK_DN:
+    case CEPH_LOCK_IAUTH:
+    case CEPH_LOCK_ILINK:
+    case CEPH_LOCK_IXATTR:
+    case CEPH_LOCK_ISNAP:
+    case CEPH_LOCK_IFLOCK:
+    case CEPH_LOCK_IPOLICY:
+      //sm = &sm_simplelock;
+      snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "simplelock");
+      break;
+    case CEPH_LOCK_IDFT:
+    case CEPH_LOCK_INEST:
+      //sm = &sm_scatterlock;
+      snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "scatterlock");
+      break;
+    case CEPH_LOCK_IFILE:
+      //sm = &sm_filelock;
+      snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "filelock");
+      break;
+    case CEPH_LOCK_DVERSION:
+    case CEPH_LOCK_IVERSION:
+      //sm = &sm_locallock;
+      snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "locallock");
+      break;
+    default:
+      //sm = 0;
+      snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???");
+    }
+%}
+
+function get_sm_name:string(sm_type:string, state:long)
+%{
+    if (strcmp(STAP_ARG_sm_type, "simplelock") == 0) 
+        STAP_RETURN(simplelock[STAP_ARG_state]);
+    else if (strcmp(STAP_ARG_sm_type, "scatterlock") == 0 )
+        STAP_RETURN(scatterlock[STAP_ARG_state]);
+    else if (strcmp(STAP_ARG_sm_type, "filelock") == 0)
+        STAP_RETURN(filelock[STAP_ARG_state]);
+    else
+        STAP_RETURN(locallock[STAP_ARG_state]);
+%}
+
