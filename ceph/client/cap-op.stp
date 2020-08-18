@@ -1,0 +1,17 @@
+#!/usr/bin/env stap
+
+/*
+ * USAGE: stap -g -v cap-op.stp -I ../../tapset/ceph --ldd | c++filt
+ *
+ */
+
+probe	process(@BIN_FUSE).function("Client::handle_cap_grant")
+{
+	printf("op = %s\n", ceph_cap_op_name($m->px->head->op->v));
+	printf("ino = 0x%x\n", $m->px->head->ino->v);
+	printf("new_caps = %s\n", ccap_string($m->px->head->caps->v));
+	printf("issued = %s\n", ccap_string($cap->issued));
+	print_ubacktrace();
+	println();
+}
+
