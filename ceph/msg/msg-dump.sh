@@ -84,6 +84,7 @@ probe   '$provider'.function("DispatchQueue::enqueue@*/src/msg/DispatchQueue.cc"
 ,       '$provider'.function("DispatchQueue::fast_dispatch@*/src/msg/DispatchQueue.cc")
 {
         msg = $m->px;
+	ms_type = msg->header->type->v;
         addr = msg->connection->px->peer_addrs->current;
         peeraddr = addr->v->_M_impl->_M_start->u->sin->sin_addr->s_addr;
         port = addr->v->_M_impl->_M_start->u->sin->sin_port;
@@ -105,6 +106,7 @@ probe   '$provider'.function("DispatchQueue::enqueue@*/src/msg/DispatchQueue.cc"
 probe   '$provider'.function("*::write_message")
 {
         msg = $m;
+	ms_type = msg->header->type->v;
         addr = msg->connection->px->peer_addrs->current;
         peeraddr = addr->v->_M_impl->_M_start->u->sin->sin_addr->s_addr;
         port = addr->v->_M_impl->_M_start->u->sin->sin_port;
