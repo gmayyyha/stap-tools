@@ -62,13 +62,6 @@ probe   process(@BIN_MDS).function("MDCache::*").return
         }
 }
 
-probe	process(@BIN_MDS).function("Locker::process_request_cap_release")
-{
-	printf("ino = 0x%x\n", $item->ino->v);
-	printf("caps = %s\n", ccap_string($item->caps->v));
-	printf("wanted = %s\n", ccap_string($item->wanted->v));
-}
-
 probe   process(@BIN_MDS).function("Locker::rdlock_start")
 ,   process(@BIN_MDS).function("Locker::wrlock_force")
 ,   process(@BIN_MDS).function("Locker::scatter_mix")
@@ -117,6 +110,28 @@ probe	process(@BIN_MDS).function("Locker::wrlock_start").return
 	lock_info(lock, "finish", 31);
 }
 
+probe	process(@BIN_MDS).function("Locker::process_request_cap_release")
+{
+	printf("ino = 0x%x\n", $item->ino->v);
+	printf("caps = %s\n", ccap_string($item->caps->v));
+	printf("wanted = %s\n", ccap_string($item->wanted->v));
+}
+
+probe	process(@BIN_MDS).function("MDCache::project_rstat_inode_to_frag")
+{
+	if ($cur->parent)
+		printf("name = %s\n", user_string($cur->parent->name->_M_dataplus->_M_p));
+}
+
+probe	process(@BIN_MDS).function("Locker::issue_new_caps").return
+{
+	if ($return->inode->parent)
+		printf("name = %s\n", user_string($return->inode->parent->name->_M_dataplus->_M_p));
+	printf("wanted = %s\n", ccap_string($return->_wanted));
+	printf("issued = %s\n", ccap_string($return->_issued));
+	printf("pending = %s\n", ccap_string($return->_pending));
+}
+
 function lock_info(lock:long, action:string, color:long)
 {
 	type = @cast(lock, "SimpleLock", @BIN_ALL)->type->type;
@@ -124,9 +139,16 @@ function lock_info(lock:long, action:string, color:long)
 
 	// FIXME
 	if (type < 16) {
-		file_type = "dentry";
+		if (@cast(lock, "SimpleLock", @BIN_ALL)->parent)
+			file_type = "dentry ".sprint(user_string(@cast(@cast(lock, "SimpleLock", @BIN_ALL)->parent, "CDentry", @BIN_ALL)->name->_M_dataplus->_M_p));
+		else
+			file_type = "dentry ";
 	} else {
-		file_type = "inode ";
+		if (@cast(@cast(lock, "SimpleLock", @BIN_ALL)->parent, "CInode", @BIN_ALL)->parent)
+			file_type = "inode ".sprint(user_string(@cast(@cast(lock, "SimpleLock", @BIN_ALL)->parent, "CInode", @BIN_ALL)->parent->name->_M_dataplus->_M_p));
+		else
+			file_type = "inode ";
+
 	}
 
 	ansi_set_color(color);
