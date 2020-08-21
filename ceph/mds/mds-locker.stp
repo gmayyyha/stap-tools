@@ -119,8 +119,15 @@ probe	process(@BIN_MDS).function("Locker::process_request_cap_release")
 
 probe	process(@BIN_MDS).function("MDCache::project_rstat_inode_to_frag")
 {
-	if ($cur->parent)
-		printf("name = %s\n", user_string($cur->parent->name->_M_dataplus->_M_p));
+	if ($cur->parent) {
+		printf("%s\n", user_string($cur->parent->name->_M_dataplus->_M_p));
+	}
+}
+
+probe   process(@BIN_MDS).function("MDCache::project_rstat_frag_to_inode")
+{
+        if ($pin->parent)
+		printf("%s\n", user_string($pin->parent->name->_M_dataplus->_M_p));
 }
 
 probe	process(@BIN_MDS).function("Locker::issue_new_caps").return
@@ -130,6 +137,36 @@ probe	process(@BIN_MDS).function("Locker::issue_new_caps").return
 	printf("wanted = %s\n", ccap_string($return->_wanted));
 	printf("issued = %s\n", ccap_string($return->_issued));
 	printf("pending = %s\n", ccap_string($return->_pending));
+}
+
+probe	process(@BIN_MDS).function("EMetaBlob::dirlump::add_dfull*")
+{
+	printf("%s\n", user_string(@var("args#0")));
+/*
+	printf("fragstat\n");
+	printf("--------\n");
+	printf("nfiles = %d\n", user_int64($this->fnode->fragstat->nfiles));
+	printf("nsubdirs = %d\n", user_int64($this->fnode->fragstat->nsubdirs));
+
+	printf("accounted_fragstat\n");
+	printf("------------------\n");
+	printf("nfiles = %d\n", user_int64($this->fnode->accounted_fragstat->nfiles));
+	printf("nsubdirs = %d\n", user_int64($this->fnode->accounted_fragstat->nsubdirs));
+
+	printf("rstat\n");
+	printf("--------\n");
+	printf("rbytes = %d\n", user_int64($this->fnode->rstat->rbytes));
+	printf("rfiles = %d\n", user_int64($this->fnode->rstat->rfiles));
+	printf("rsubdirs = %d\n", user_int64($this->fnode->rstat->rsubdirs));
+	printf("rsnaps = %d\n", user_int64($this->fnode->rstat->rsnaps));
+
+	printf("accounted_rstat\n");
+	printf("---------------\n");
+	printf("rbytes = %d\n", user_int64($this->fnode->accounted_rstat->rbytes));
+	printf("rfiles = %d\n", user_int64($this->fnode->accounted_rstat->rfiles));
+	printf("rsubdirs = %d\n", user_int64($this->fnode->accounted_rstat->rsubdirs));
+	printf("rsnaps = %d\n", user_int64($this->fnode->accounted_rstat->rsnaps));
+*/
 }
 
 function lock_info(lock:long, action:string, color:long)
