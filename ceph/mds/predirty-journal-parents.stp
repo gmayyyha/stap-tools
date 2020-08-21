@@ -1,0 +1,38 @@
+#!/usr/bin/env stap
+
+/*
+ * USAGE: stap -v -g predirty-journal-parents.stp -I ../../tapset/ceph/ --ldd
+ */
+
+probe   process(@BIN_MDS).function("MDCache::project_rstat_inode_to_frag")
+{
+        if ($cur->parent) {
+                printf("%s [%s first %d linkunlink %d]\n", ppfunc(),
+			user_string($cur->parent->name->_M_dataplus->_M_p), $first->val, $linkunlink);
+                printf("    frag head is [%d,head]\n", $parent->first->val);
+                printf(" inode update is [%d,%s]\n", $cur->first->val, get_snapid_name($cur->last->val));
+        }
+}
+
+probe   process(@BIN_MDS).function("MDCache::_project_rstat_inode_to_frag")
+{
+        printf("%s [%d,%s]\n", ppfunc(), $ofirst->val, get_snapid_name($last->val));
+        printf("  inode           rstat n(v%d b%d %d=%d+%d)\n", $inode->rstat->version, $inode->rstat->rbytes,
+                                $inode->rstat->rfiles+$inode->rstat->rsubdirs, $inode->rstat->rfiles, $inode->rstat->rsubdirs);
+        printf("  inode accounted_rstat n(v%d b%d %d=%d+%d)\n", $inode->accounted_rstat->version, $inode->accounted_rstat->rbytes,
+                                $inode->accounted_rstat->rfiles+$inode->accounted_rstat->rsubdirs, $inode->accounted_rstat->rfiles, $inode->accounted_rstat->rsubdirs);
+	println();
+}
+
+probe   process(@BIN_MDS).function("MDCache::project_rstat_frag_to_inode")
+{
+	if ($pin->parent)
+		printf("%s %s [%d,%s]\n", ppfunc(), user_string($pin->parent->name->_M_dataplus->_M_p), $ofirst->val, get_snapid_name($last->val));
+	else
+		printf("%s %s [%d,%s]\n", ppfunc(), "/", $ofirst->val, get_snapid_name($last->val));
+        printf("  frag           rstat n(v%d b%d %d=%d+%d)\n", $rstat->version, $rstat->rbytes,
+                                $rstat->rfiles+$rstat->rsubdirs, $rstat->rfiles, $rstat->rsubdirs);
+        printf("  frag accounted_rstat n(v%d b%d %d=%d+%d)\n", $accounted_rstat->version, $accounted_rstat->rbytes,
+                                $accounted_rstat->rfiles+$accounted_rstat->rsubdirs, $accounted_rstat->rfiles, $accounted_rstat->rsubdirs);
+	println();
+}
