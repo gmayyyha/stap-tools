@@ -1,0 +1,71 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe	process(@BIN_MDS).function("StrayManager::eval_stray")
+{
+	flow[tid()] = 1;
+}
+
+probe	process(@BIN_MDS).function("StrayManager::eval_stray").return
+{
+	if (flow[tid()]) {
+		flow[tid()] = 0;
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+	}
+}
+
+probe	process(@BIN_MDS).function("C_IO_PurgeStrayPurged::finish")
+,	process(@BIN_MDS).function("C_PurgeStrayLogged::finish")
+{
+	flow[tid()] = 1;
+	printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	process(@BIN_MDS).function("C_IO_PurgeStrayPurged::finish").return
+,	process(@BIN_MDS).function("C_PurgeStrayLogged::finish").return
+{
+	if (flow[tid()]) {
+		flow[tid()] = 0;
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+	}
+}
+
+probe	process(@BIN_MDS).function("StrayManager::*").call
+,	process(@BIN_MDS).function("CDir::*").call
+{
+	if (flow[tid()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	process(@BIN_MDS).function("StrayManager::*").return
+,	process(@BIN_MDS).function("CDir::*").return
+{
+	if (flow[tid()])
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
+probe	process(@BIN_MDS).function("CDir::remove_dentry")
+{
+	ansi_set_color(31);
+	printf("dn = %s\n", user_string($dn->name->_M_dataplus->_M_p));
+	ansi_reset_color();
+}
+
+probe	process(@BIN_MDS).function("MDCache::remove_inode")
+{
+	if ($o->parent) {
+		ansi_set_color(31);
+		printf("%s inode = %s\n", ppfunc(), user_string($o->parent->name->_M_dataplus->_M_p));
+		ansi_reset_color();
+	}
+}
+
+probe	process(@BIN_MDS).function("StrayManager::reintegrate_stray")
+{
+	ansi_set_color(31);
+	printf("%s %s to %s\n", ppfunc(),
+				user_string($straydn->name->_M_dataplus->_M_p),
+				user_string($rdn->name->_M_dataplus->_M_p));
+	ansi_reset_color();
+}
