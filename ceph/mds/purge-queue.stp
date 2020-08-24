@@ -1,0 +1,79 @@
+#!/usr/bin/env stap
+
+/*
+ 0x56206e9bd85f : PurgeQueue::_consume()+0x17/0xa4c [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9bc9b7 : PurgeQueue::push(PurgeItem const&, Context*)+0x30f/0x444 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b18c1 : StrayManager::purge(CDentry*)+0x699/0x768 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b2ef1 : StrayManager::_enqueue(CDentry*, bool)+0x333/0x378 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b2a4b : StrayManager::enqueue(CDentry*, bool)+0x25f/0x3a4 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b44ce : StrayManager::_eval_stray(CDentry*)+0x103a/0x11b8 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b47ff : StrayManager::eval_stray(CDentry*)+0x55/0x70 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9b31a4 : StrayManager::advance_delayed()+0x196/0x1f6 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8918f5 : MDCache::trim(unsigned long)+0x229/0x126e [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e84e476 : MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}::operator()() const+0x314/0x852 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8d2365 : void std::__invoke_impl<void, MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}>(std::__invoke_other, MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}&&)+0x20/0x23 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8d17ec : std::__invoke_result<MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}>::type std::__invoke<MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}>(std::__invoke_result&&, (MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}&&)...)+0x20/0x24 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8d346a : decltype (__invoke((_S_declval<0ul>)())) std::thread::_Invoker<std::tuple<MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>)+0x28/0x2b [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8d3440 : std::thread::_Invoker<std::tuple<MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}> >::operator()()+0x18/0x1a [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e8d32bc : std::thread::_State_impl<std::thread::_Invoker<std::tuple<MDCache::MDCache(MDSRank*, PurgeQueue&)::{lambda()#1}> > >::_M_run()+0x1c/0x20 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x7f2a036005bf : execute_native_thread_routine+0xf/0x30 [/tiger/source/ceph/build/lib/libceph-common.so.2]
+ 0x7f2a008afe25 : start_thread+0xc5/0x300 [/usr/lib64/libpthread-2.17.so]
+ 0x7f29ff562bad : clone+0x6d/0x90 [/usr/lib64/libc-2.17.so]
+
+ 0x56206e9bd85f : PurgeQueue::_consume()+0x17/0xa4c [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9bd730 : PurgeQueue::_consume()::{lambda(int)#3}::operator()(int) const+0x4e/0xae [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e9c2892 : LambdaContext<PurgeQueue::_consume()::{lambda(int)#3}>::finish(int)+0x24/0x28 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x56206e6af9af : Context::complete(int)+0x27/0x48 [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x7f2a02bf4a67 : Finisher::finisher_thread_entry()+0x39d/0x977 [/tiger/source/ceph/build/lib/libceph-common.so.2]
+ 0x56206e6f2cac : Finisher::FinisherThread::entry()+0x1c/0x1e [/tiger/source/ceph/build/bin/ceph-mds]
+ 0x7f2a02c657de : Thread::entry_wrapper()+0x78/0x80 [/tiger/source/ceph/build/lib/libceph-common.so.2]
+ 0x7f2a02c6575c : Thread::_entry_func(void*)+0x18/0x22 [/tiger/source/ceph/build/lib/libceph-common.so.2]
+ 0x7f2a008afe25 : start_thread+0xc5/0x300 [/usr/lib64/libpthread-2.17.so]
+ 0x7f29ff562bad : clone+0x6d/0x90 [/usr/lib64/libc-2.17.so]
+ */
+
+/*
+ * USAGE: stap -v -g purge-queue.stp -I ../../tapset/ceph/ --ldd | c++filt
+ */
+
+global flow;
+
+probe	process(@BIN_MDS).function("PurgeQueue::_consume")
+{
+	flow[tid()] = 1;
+}
+
+probe	process(@BIN_MDS).function("PurgeQueue::_consume").return
+{
+	if (flow[tid()]) {
+		flow[tid()] = 0;
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+	}
+}
+
+probe	process(@BIN_MDS).function("PurgeQueue::*").call
+,	process(@BIN_MDS).function("Journaler::*").call
+,	process(@BIN_MDS).function("Filer::*").call
+,	process(@BIN_MDS).function("Striper::*").call
+,	process(@BIN_MDS).function("Objecter::*").call
+{
+	if (flow[tid()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	process(@BIN_MDS).function("PurgeQueue::*").return
+,	process(@BIN_MDS).function("Journaler::*").return
+,	process(@BIN_MDS).function("Filer::*").return
+,	process(@BIN_MDS).function("Striper::*").return
+,	process(@BIN_MDS).function("Objecter::*").return
+{
+	if (flow[tid()])
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
+probe	process(@BIN_MDS).function("Objecter::remove")
+{
+	ansi_set_color(31);
+	printf("poolid = %d\toid = %s\n", $oloc->pool, user_string($oid->name->_M_dataplus->_M_p));
+	ansi_reset_color();
+}
