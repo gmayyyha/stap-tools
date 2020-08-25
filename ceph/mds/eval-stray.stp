@@ -31,7 +31,10 @@ probe	process(@BIN_MDS).function("C_IO_PurgeStrayPurged::finish").return
 	}
 }
 
+
 probe	process(@BIN_MDS).function("StrayManager::*").call
+,	process(@BIN_MDS).function("PurgeQueue::*").call
+,	process(@BIN_MDS).function("Journaler::*").call
 ,	process(@BIN_MDS).function("CDir::*").call
 {
 	if (flow[tid()])
@@ -39,6 +42,8 @@ probe	process(@BIN_MDS).function("StrayManager::*").call
 }
 
 probe	process(@BIN_MDS).function("StrayManager::*").return
+,	process(@BIN_MDS).function("PurgeQueue::*").return
+,	process(@BIN_MDS).function("Journaler::*").return
 ,	process(@BIN_MDS).function("CDir::*").return
 {
 	if (flow[tid()])
@@ -48,7 +53,7 @@ probe	process(@BIN_MDS).function("StrayManager::*").return
 probe	process(@BIN_MDS).function("CDir::remove_dentry")
 {
 	ansi_set_color(31);
-	printf("dn = %s\n", user_string($dn->name->_M_dataplus->_M_p));
+	printf("%s [dn = %s]\n", ppfunc(), user_string($dn->name->_M_dataplus->_M_p));
 	ansi_reset_color();
 }
 
@@ -64,8 +69,25 @@ probe	process(@BIN_MDS).function("MDCache::remove_inode")
 probe	process(@BIN_MDS).function("StrayManager::reintegrate_stray")
 {
 	ansi_set_color(31);
-	printf("%s %s to %s\n", ppfunc(),
+	printf("%s [%s to %s]\n", ppfunc(),
 				user_string($straydn->name->_M_dataplus->_M_p),
 				user_string($rdn->name->_M_dataplus->_M_p));
 	ansi_reset_color();
+}
+
+probe   process(@BIN_MDS).function("Journaler::append_entry")
+{
+        ansi_set_color(31);
+	printf("%s [name = %s\tino = %x\treadable = %d]\n", ppfunc(),
+					   user_string($this->name->_M_dataplus->_M_p),
+					   $this->ino->val,
+					   $this->readable);
+        ansi_reset_color();
+}
+
+probe   process(@BIN_MDS).function("Filer::write")
+{
+        ansi_set_color(31);
+        printf("%s [ino = %x]\n", ppfunc(), $ino->val);
+        ansi_reset_color();
 }
