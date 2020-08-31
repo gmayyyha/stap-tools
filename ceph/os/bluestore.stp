@@ -1,0 +1,100 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe	process(@BIN_OSD).function("BlueStore::_txc_add_transaction")
+{
+	flow[tid()] = 1;
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_txc_add_transaction").return
+{
+	if (flow[tid()]) {
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+		flow[tid()] = 0;
+	}
+}
+
+probe	process(@BIN_OSD).function("BlueStore::*").call
+{
+	if (flow[tid()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	process(@BIN_OSD).function("BlueStore::*").return
+{
+	if (flow[tid()])
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_write")
+{
+	pgid = user_string($c->px->cid->_str);
+	poolid = $o->px->oid->hobj->pool;
+	hash = $o->px->oid->hobj->hash_reverse_bits;
+	oid = user_string($o->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	snap = get_snapid_name($o->px->oid->hobj->snap->val);
+
+	printf("%s(%7d)\t%s/#%d:%x:%s:%s# 0x%x~%x\n", ppfunc(), tid(),
+					pgid, poolid, hash, oid, snap, $offset, $length);
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_clone")
+{
+	pgid = user_string($c->px->cid->_str);
+	poolid = $oldo->px->oid->hobj->pool;
+	hash = $oldo->px->oid->hobj->hash_reverse_bits;
+	oid = user_string($oldo->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	snap = get_snapid_name($oldo->px->oid->hobj->snap->val);
+
+	npoolid = $newo->px->oid->hobj->pool;
+	nhash = $newo->px->oid->hobj->hash_reverse_bits;
+	noid = user_string($newo->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	nsnap = get_snapid_name($newo->px->oid->hobj->snap->val);
+
+	printf("%s(%7d)\t%s/#%d:%x:%s:%s# -> %s/#%d:%x:%s:%s#\n", ppfunc(), tid(),
+					pgid, poolid, hash, oid, snap,
+					pgid, npoolid, nhash, noid, nsnap);
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_do_clone_range")
+{
+	pgid = user_string($c->px->cid->_str);
+	poolid = $oldo->px->oid->hobj->pool;
+	hash = $oldo->px->oid->hobj->hash_reverse_bits;
+	oid = user_string($oldo->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	snap = get_snapid_name($oldo->px->oid->hobj->snap->val);
+
+	npoolid = $newo->px->oid->hobj->pool;
+	nhash = $newo->px->oid->hobj->hash_reverse_bits;
+	noid = user_string($newo->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	nsnap = get_snapid_name($newo->px->oid->hobj->snap->val);
+	printf("%s(%7d)\t%s/#%d:%x:%s:%s# -> %s/#%d:%x:%s:%s#\t0x%x~%x -> 0x%x~%x\n", ppfunc(), tid(),
+					pgid, poolid, hash, oid, snap,
+					pgid, npoolid, nhash, noid, nsnap,
+					$srcoff, $length, $dstoff, $length);
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_setattrs")
+{
+	pgid = user_string($c->px->cid->_str);
+	poolid = $o->px->oid->hobj->pool;
+	hash = $o->px->oid->hobj->hash_reverse_bits;
+	oid = user_string($o->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	snap = get_snapid_name($o->px->oid->hobj->snap->val);
+
+	printf("%s(%7d)\t%s/#%d:%x:%s:%s#\n", ppfunc(), tid(),
+					pgid, poolid, hash, oid, snap);
+}
+
+probe	process(@BIN_OSD).function("BlueStore::_omap_setkeys")
+{
+	pgid = user_string($c->px->cid->_str);
+	poolid = $o->px->oid->hobj->pool;
+	hash = $o->px->oid->hobj->hash_reverse_bits;
+	oid = user_string($o->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+	snap = get_snapid_name($o->px->oid->hobj->snap->val);
+
+	printf("%s(%7d)\t%s/#%d:%x:%s:%s#\n", ppfunc(), tid(),
+					pgid, poolid, hash, oid, snap);
+}
