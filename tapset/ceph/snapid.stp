@@ -9,5 +9,5 @@ probe init
 
 function get_snapid_name:string(snapid:long)
 {
-    return (snapid in snapid_names) ? snapid_names[snapid] : sprintf("0x%x", snapid);
+    return (snapid in snapid_names) ? snapid_names[snapid] : sprintf("%x", snapid);
 }

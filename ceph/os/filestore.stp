@@ -1,0 +1,108 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe	process(@BIN_OSD).function("FileStore::_do_op")
+{
+	flow[tid()] = 1;
+}
+
+probe	process(@BIN_OSD).function("FileStore::_do_op").return
+{
+	if (flow[tid()]) {
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+		flow[tid()] = 0;
+	}
+}
+
+probe	process(@BIN_OSD).function("FileStore::*").call
+{
+	if (flow[tid()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	process(@BIN_OSD).function("FileStore::*").return
+{
+	if (flow[tid()])
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
+probe	process(@BIN_OSD).function("FileStore::_write")
+{
+	printf("%s(%7d)\t%s %d~%d\n", ppfunc(), tid(), format_object($cid, $oid), $offset, $len);
+}
+
+probe	process(@BIN_OSD).function("FileStore::_clone")
+{
+	printf("%s(%7d)\t%s -> %s\n", ppfunc(), tid(), format_object($cid, $oldoid), format_object($cid, $newoid));
+}
+
+probe	process(@BIN_OSD).function("FileStore::_do_clone_range")
+{
+	printf("%s(%7d)\t%d~%d to %d\n", ppfunc(), tid(), $srcoff, $len, $dstoff);
+}
+
+probe	process(@BIN_OSD).function("FileStore::_setattrs")
+{
+	printf("%s(%7d)\t%s\n", ppfunc(), tid(), format_object($cid, $oid));
+}
+
+probe	process(@BIN_OSD).function("FileStore::_fgetattr")
+{
+	printf("%s(%7d)\t%s %s\n", ppfunc(), tid(), task_file_handle_d_path(task_current(), $fd), user_string($name));
+}
+
+probe	process(@BIN_OSD).function("FileStore::_omap_setkeys")
+{
+	printf("%s(%7d)\t%s\n", ppfunc(), tid(), format_object($cid, $hoid));
+}
+
+function format_object:string(cid:long, oid:long)
+{
+	pgid = user_string(@cast(cid, "coll_t", @BIN_ALL)->_str);
+        poolid = @cast(oid, "ghobject_t", @BIN_ALL)->hobj->pool;
+        hash = @cast(oid, "ghobject_t", @BIN_ALL)->hobj->hash_reverse_bits;
+        objid = user_string(@cast(oid, "ghobject_t", @BIN_ALL)->hobj->oid->name->_M_dataplus->_M_p);
+        snap = get_snapid_name(@cast(oid, "ghobject_t", @BIN_ALL)->hobj->snap->val);
+
+	return sprintf("%s/#%d:%x:%s:%s#", pgid, poolid, hash, objid, snap);
+}
+
+/* stealt from pfiles.stp */
+function task_file_handle_d_path:string (task:long, fd:long)
+%{
+	struct task_struct *p = (struct task_struct *)((long)STAP_ARG_task);
+	struct files_struct *files;
+	char *page = NULL;
+	struct file *filp;
+	struct dentry *dentry;
+	struct vfsmount *vfsmnt;
+	char *path = NULL;
+
+	rcu_read_lock();
+	if ((files = kread(&p->files)) &&
+	    (page = (char *)__get_free_page(GFP_ATOMIC)) &&
+	    (filp = fcheck_files(files, STAP_ARG_fd))) {
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26)
+		/* git commit 9d1bc601 */
+		path = d_path(&filp->f_path, page, PAGE_SIZE);
+#else
+		dentry = kread(&filp->f_dentry);
+		vfsmnt = kread(&filp->f_vfsmnt);
+
+		if (dentry && vfsmnt) {
+			path = d_path(dentry, vfsmnt, page, PAGE_SIZE);
+		}
+#endif
+		if (path && !IS_ERR(path)) {
+			snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", path);
+		}
+	}
+
+	CATCH_DEREF_FAULT();
+
+	if (page) free_page((unsigned long)page);
+
+	rcu_read_unlock();
+%}
