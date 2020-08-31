@@ -1,19 +1,35 @@
 #!/usr/bin/env stap
 
 /*
- * USAGE: stap -g -v cap-op.stp -I ../../tapset/ceph --ldd | c++filt
- *
+ * USAGE: stap -v -g cap-op.stp -I ../../tapset/ceph/ --ldd
  */
+
+probe	process(@BIN_FUSE).function("Client::handle_caps")
+{
+	printf("op = %s\n", ceph_cap_op_name($m->px->head->op->v));
+}
 
 probe	process(@BIN_FUSE).function("Client::handle_cap_grant")
 {
-	printf("op = %s\n", ceph_cap_op_name($m->px->head->op->v));
 	printf("ino = 0x%x\n", $m->px->head->ino->v);
 	printf("new_caps = %s\n", ccap_string($m->px->head->caps->v));
 	printf("issued = %s\n", ccap_string($cap->issued));
 	printf("implemented = %s\n", ccap_string($cap->implemented|$m->px->head->caps->v));
 	print_ubacktrace();
 	println();
+}
+
+probe	process(@BIN_FUSE).function("Client::handle_cap_export")
+{
+	printf("ino = 0x%x\n", $m->px->head->ino->v);
+	printf("peer_mds = %d\n", $m->px->peer->mds->v);
+	print_ubacktrace();
+	println();
+}
+
+probe	process(@BIN_FUSE).function("Client::handle_cap_import")
+{
+	printf("peer_mds = %d\n", $m->px->peer->mds->v);
 }
 
 probe	process(@BIN_FUSE).function("Client::send_cap")
