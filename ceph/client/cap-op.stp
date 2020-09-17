@@ -1,7 +1,7 @@
 #!/usr/bin/env stap
 
 /*
- * USAGE: stap -v -g cap-op.stp -I ../../tapset/ceph/ --ldd
+ * USAGE: stap -v -g cap-op.stp -I ../../tapset/ceph/ --ldd | c++filt
  */
 
 probe	process(@BIN_FUSE).function("Client::handle_caps")
