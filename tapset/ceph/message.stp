@@ -293,7 +293,15 @@ function client_request_dump(msg:long)
 
 function client_reply_dump(msg:long)
 {
-	printf("%79s: %s\n", "op", ceph_mds_op_name(@cast(msg, "MClientReply", @BIN_ALL)->head->op->v));
+	printf("%79s: %s\t\tresult: (%d) ",
+		"op", ceph_mds_op_name(@cast(msg, "MClientReply", @BIN_ALL)->head->op->v),
+		@cast(msg, "MClientReply", @BIN_ALL)->head->result->v);
+	if (@cast(msg, "MClientReply", @BIN_ALL)->head->op->v & 0x001000)       // CEPH_MDS_OP_WRITE
+		if (@cast(msg, "MClientReply", @BIN_ALL)->head->safe)
+			printf("safe");
+		else
+			printf("unsafe");
+	println();
 }
 
 function client_session_dump(msg:long)
