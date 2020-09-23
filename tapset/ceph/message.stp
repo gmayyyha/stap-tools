@@ -309,6 +309,11 @@ function client_session_dump(msg:long)
 	printf("%79s: %s\n", "op", ceph_session_op_name(@cast(msg, "MClientSession", @BIN_ALL)->head->op->v));
 }
 
+function client_caps_dump(msg:long)
+{
+	printf("%79s: %s\n", "op", ceph_cap_op_name(@cast(msg, "MClientCaps", @BIN_ALL)->head->op->v));
+}
+
 function ceph_msg_dump(msg:long, dir:string)
 {
 	name = ceph_msg_getname(msg);
@@ -318,6 +323,8 @@ function ceph_msg_dump(msg:long, dir:string)
 		client_reply_dump(msg);
 	} else if (name == "CEPH_MSG_CLIENT_SESSION") {
 		client_session_dump(msg);
+	} else if (name == "CEPH_MSG_CLIENT_CAPS") {
+		client_caps_dump(msg);
 	}
 
 	msg_header_dump(msg);
