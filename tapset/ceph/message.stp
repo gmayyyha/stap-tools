@@ -278,8 +278,19 @@ function ceph_msg_name:string(type:long)
         return (type in cephmsg_names) ? cephmsg_names[type] : sprintf("unknown msg %d", type);
 }
 
+function client_request_dump(msg:long)
+{
+	hdr = &@cast(msg, "Message", @BIN_ALL)->header;
+	printf("%79s: %d\ttid: %d\n", "seq",
+	        hdr->seq->v,
+	        hdr->tid->v);
+	printf("%79s: %s\n", "op", ceph_mds_op_name(@cast(msg, "MClientRequest", @BIN_ALL)->head->op->v));
+}
 
 function ceph_msg_dump(msg:long, dir:string)
 {
-	printf("not support yet");
+	name = ceph_msg_getname(msg);
+	if (name == "CEPH_MSG_CLIENT_REQUEST") {
+		client_request_dump(msg);
+	}
 }

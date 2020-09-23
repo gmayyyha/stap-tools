@@ -120,6 +120,7 @@ probe   '$provider'.function("*::write_message")
                 execname(), pid(), ppfunc(), ceph_msg_getname(msg), msg->header->priority->v,
                 ceph_entity_type_name(type),
                 format_ipaddr(peeraddr, 2), ntohs(port), nonce);
+        ceph_msg_dump(msg);
         ansi_reset_color();
 
         lasttime[pid(), peeraddr, port, type, nonce] = gettimeofday_us();
