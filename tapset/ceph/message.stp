@@ -314,7 +314,7 @@ function client_caps_dump(msg:long)
 	printf("%79s: %s\n", "op", ceph_cap_op_name(@cast(msg, "MClientCaps", @BIN_ALL)->head->op->v));
 }
 
-function ceph_msg_dump(msg:long, dir:string)
+function ceph_msg_dump(msg:long)
 {
 	name = ceph_msg_getname(msg);
 	if (name == "CEPH_MSG_CLIENT_REQUEST") {
