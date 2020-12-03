@@ -1,0 +1,33 @@
+%{
+enum {
+    STATE_PREPARE,
+    STATE_AIO_WAIT,
+    STATE_IO_DONE,
+    STATE_KV_QUEUED,     // queued for kv_sync_thread submission
+    STATE_KV_SUBMITTED,  // submitted to kv; not yet synced
+    STATE_KV_DONE,
+    STATE_DEFERRED_QUEUED,    // in deferred_queue (pending or running)
+    STATE_DEFERRED_CLEANUP,   // remove deferred kv record
+    STATE_DEFERRED_DONE,
+    STATE_FINISHING,
+    STATE_DONE,
+};
+%}
+
+function get_txc_state_name:string(state:long)
+%{
+    switch (STAP_ARG_state) {
+    case STATE_PREPARE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "prepare"); break;
+    case STATE_AIO_WAIT: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "aio_wait"); break;
+    case STATE_IO_DONE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "io_done"); break;
+    case STATE_KV_QUEUED: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "kv_queued"); break;
+    case STATE_KV_SUBMITTED: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "kv_submitted"); break;
+    case STATE_KV_DONE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "kv_done"); break;
+    case STATE_DEFERRED_QUEUED: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "deferred_queued"); break;
+    case STATE_DEFERRED_CLEANUP: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "deferred_cleanup"); break;
+    case STATE_DEFERRED_DONE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "deferred_done"); break;
+    case STATE_FINISHING: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "finishing"); break;
+    case STATE_DONE: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "done"); break;
+    default: snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", "???"); break;
+    }
+%}

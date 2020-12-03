@@ -1,0 +1,17 @@
+
+probe   process(@BIN_OSD).function("BlueStore::_txc_state_proc")
+{
+    printf("%s\t%p\t%s\n", ppfunc(), $txc, get_txc_state_name($txc->state));
+}
+
+/*
+probe   process(@BIN_OSD).function("BlueStore::_txc_committed_kv").return
+{
+    printf("%s\t%p\t%s\n", ppfunc(), @entry($txc), get_txc_state_name(@entry($txc->state)));
+}
+*/
+
+probe   process(@BIN_OSD).function("BlueStore::_txc_finish")
+{
+    printf("%s\t%p\t%s\n", ppfunc(), $txc, get_txc_state_name($txc->state));
+}

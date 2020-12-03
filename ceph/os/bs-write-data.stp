@@ -1,0 +1,67 @@
+
+probe   process(@BIN_OSD).function("BlueStore::_do_write_data")
+{
+    pgid = user_string($c->px->cid->_str);
+    poolid = $o->px->oid->hobj->pool;
+    hash = $o->px->oid->hobj->hash_reverse_bits;
+    oid = user_string($o->px->oid->hobj->oid->name->_M_dataplus->_M_p);
+    snap = get_snapid_name($o->px->oid->hobj->snap->val);
+
+    osize = $o->px->onode->size;
+
+    nid = $o->px->onode->nid;
+    min_alloc_size = $this->min_alloc_size;
+
+    printf("%s(%7d)\t[%6d]%s/#%d:%x:%s:%s# 0x%x~%x\tmin_alloc_size=0x%x\n", ppfunc(), tid(), nid,
+                                    pgid, poolid, hash, oid, snap, $offset, $length, min_alloc_size);
+    printf("have 0x%x\n", osize);
+
+    end = $offset + $length
+    if ($offset / min_alloc_size == (end - 1) / min_alloc_size &&
+       ($length != min_alloc_size)) {
+        ansi_set_color(31);
+        printf("_do_write_small\n");
+        ansi_reset_color();
+    } else {
+        head_offset = $offset;
+        head_length = p2nphase($offset, min_alloc_size);
+
+        tail_offset = p2align(end, min_alloc_size);
+        tail_length = p2phase(end, min_alloc_size);
+
+        middle_offset = head_offset + head_length;
+        middle_length = $length - head_length - tail_length;
+
+        if (head_length) {
+            ansi_set_color(31);
+            printf("_do_write_small-head_length 0x%x~%x\n", head_offset, head_length)
+        }
+
+        if (middle_length) {
+            ansi_set_color(32);
+            printf("_do_write_big-middle_length 0x%x~%x\n", middle_offset, middle_length);
+            ansi_reset_color();
+        }
+
+        if (tail_length) {
+            ansi_set_color(31);
+            printf("_do_write_small-tail_length 0x%x~%x\n", tail_offset, tail_length);
+            ansi_reset_color();
+        }
+    }
+}
+
+function p2nphase:long(x:long, align:long)
+{
+    return -x & (align - 1);
+}
+
+function p2align:long(x:long, align:long)
+{
+    return x & -align;
+}
+
+function p2phase:long(x:long, align:long)
+{
+    return x & (align - 1);
+}
