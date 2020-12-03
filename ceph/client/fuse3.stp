@@ -1,0 +1,59 @@
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_apply_conn_info_opts")
+{
+    printf("splice_read=%d\n", $opts->splice_read);
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_buf_copy_one")
+{
+    printf("src_is_fd=%d\n", $src->flags & (1<<1));
+    printf("dst_is_fd=%d\n", $dst->flags & (1<<1));
+    printf("%s\n", $$parms$$);
+    print_ubacktrace();
+    println();
+}
+
+/*
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_send_msg")
+{
+    print_ubacktrace();
+    println();
+}
+*/
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_loop_start_thread")
+{
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_buf_read")
+{
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_buf_write")
+{
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_reply_data")
+{
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_reply_iov")
+{
+    print_ubacktrace();
+    println();
+}
+
+probe   process(@BIN_FUSE).library("libfuse3.so.*").function("fuse_buf_fd_to_fd")
+{
+    print_ubacktrace();
+    println();
+}

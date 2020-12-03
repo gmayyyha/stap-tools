@@ -1,0 +1,47 @@
+
+global flow;
+
+/*
+ 0x7f3a5b3215b5 : librbd::io::ImageRequestWQ<librbd::ImageCtx>::process(librbd::io::ImageDispatchSpec<librbd::ImageCtx>*)+0x173/0x204 [/home/tiger/ceph-v14.2.13/build/lib/librbd.so.1.12.0]
+ 0x7f3a5b326db2 : ThreadPool::PointerWQ<librbd::io::ImageDispatchSpec<librbd::ImageCtx> >::_void_process(void*, ThreadPool::TPHandle&)+0x32/0x36 [/home/tiger/ceph-v14.2.13/build/lib/librbd.so.1.12.0]
+ 0x7f3a518ca669 : ThreadPool::worker(ThreadPool::WorkThread*)+0x739/0xd1a [/home/tiger/ceph-v14.2.13/build/lib/libceph-common.so.0]
+ 0x7f3a518ce7c0 : ThreadPool::WorkThread::entry()+0x32/0x3a [/home/tiger/ceph-v14.2.13/build/lib/libceph-common.so.0]
+ 0x7f3a518a789c : Thread::entry_wrapper()+0x78/0x80 [/home/tiger/ceph-v14.2.13/build/lib/libceph-common.so.0]
+ 0x7f3a518a781a : Thread::_entry_func(void*)+0x18/0x22 [/home/tiger/ceph-v14.2.13/build/lib/libceph-common.so.0]
+ 0x7f3a4ff7bfa3 [/usr/lib/x86_64-linux-gnu/libpthread-2.28.so+0x7fa3/0x1d000]
+*/
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::io::ImageRequestWQ<librbd::ImageCtx>::process")
+{
+    printf("%s -> %s\n", thread_indent(4), ppfunc());
+    flow[task_current()] =  1;
+}
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::io::ImageRequestWQ<librbd::ImageCtx>::process").return
+{
+    flow[task_current()] =  0;
+}
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*").call
+,   process(@BIN_RBD).library("librbd*").function("librbd::*::*").call
+,   process(@BIN_RBD).library("librbd*").function("librbd::*").call
+,   process(@BIN_RBD).library("librados*").function("librados::*::*").call
+,   process(@BIN_RBD).library("librados*").function("Objecter::*").call
+,   process(@BIN_RBD).library("librbd*").function("ObjectCacher::*").call
+{
+    if (flow[task_current()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+    }
+}
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*").return
+,   process(@BIN_RBD).library("librbd*").function("librbd::*::*").return
+,   process(@BIN_RBD).library("librbd*").function("librbd::*").return
+,   process(@BIN_RBD).library("librados*").function("librados::*::*").return
+,   process(@BIN_RBD).library("librados*").function("Objecter::*").return
+,   process(@BIN_RBD).library("librbd*").function("ObjectCacher::*").return
+{
+    if (flow[task_current()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
