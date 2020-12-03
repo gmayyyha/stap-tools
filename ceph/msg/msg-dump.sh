@@ -16,6 +16,7 @@ dumpmsg=""
 
 usage()
 {
+        echo "./msg-dump [-p pid] [-s] [-m name] entity"
         echo "ceph entity: ceph-mon, ceph-mgr, ceph-osd, ceph-mds,
                            ceph-fuse, libceph, ceph or rbd" >&2
         exit 1
@@ -122,7 +123,7 @@ probe   '$provider'.function("DispatchQueue::enqueue@*/src/msg/DispatchQueue.cc"
 	}
 }
 
-probe   '$provider'.function("*::write_message")
+probe   '$provider'.function("Protocol*::write_message")
 {
 	msg = $m;
 	if ("'$dumpmsg'" == "" || ceph_msg_getname(msg) =~ "'$dumpmsg'") {
