@@ -17,22 +17,36 @@ probe   process(@BIN_RBD).library("librbd*").function("librbd::Image::aio_write"
 #    printf("%s\n", user_string(@cast($this->ctx, "struct librbd::Image")->name->_M_dataplus->_M_p));
     printf("off=%d, len=%d\n", $off, $len);
     printf("%s -> %s\n", thread_indent(4), ppfunc());
-    flow[task_current()] =  1;
+    flow[task_current()] ++;
 }
 
 probe   process(@BIN_RBD).library("librbd*").function("librbd::Image::aio_write").return
 ,   process(@BIN_RBD).library("librbd*").function("librbd::Image::aio_read").return
 {
     if (flow[task_current()])
-        flow[task_current()] = 0;
+        flow[task_current()] --;
+}
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::io::ImageRequestWQ*::process")
+{
+    printf("%s -> %s\n", thread_indent(4), ppfunc());
+    flow[task_current()] ++;
+}
+
+probe   process(@BIN_RBD).library("librbd*").function("librbd::io::ImageRequestWQ*::process").return
+{
+    if (flow[task_current()])
+        flow[task_current()] --;
 }
 
 
 probe   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*").call
+,   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*::*").call
 ,   process(@BIN_RBD).library("librbd*").function("librbd::*::*").call
 ,   process(@BIN_RBD).library("librbd*").function("librbd::*").call
 ,   process(@BIN_RBD).library("librados*").function("librados::*::*").call
 ,   process(@BIN_RBD).library("librados*").function("Objecter::*").call
+,   process(@BIN_RBD).library("librbd*").function("ObjectCacher::*").call
 {
     if (flow[task_current()]) {
         printf("%s -> %s\n", thread_indent(4), ppfunc());
@@ -40,10 +54,12 @@ probe   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*").call
 }
 
 probe   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*").return
+,   process(@BIN_RBD).library("librbd*").function("librbd::*::*::*::*").return
 ,   process(@BIN_RBD).library("librbd*").function("librbd::*::*").return
 ,   process(@BIN_RBD).library("librbd*").function("librbd::*").return
 ,   process(@BIN_RBD).library("librados*").function("librados::*::*").return
 ,   process(@BIN_RBD).library("librados*").function("Objecter::*").return
+,   process(@BIN_RBD).library("librbd*").function("ObjectCacher::*").return
 {
     if (flow[task_current()]) {
         printf("%s <- %s\n", thread_indent(-4), ppfunc());
