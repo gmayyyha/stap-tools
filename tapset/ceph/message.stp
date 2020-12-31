@@ -93,7 +93,7 @@ probe	init
 //#define MSG_OSD_SUBOPREPLY   77
 
 	cephmsg_names[78] = "MSG_OSD_PGTEMP";
-        cephmsg_names[79] = "MSG_OSD_BEACON";
+        cephmsg_names[81] = "MSG_OSD_BEACON";
 
         cephmsg_names[80] = "MSG_OSD_PG_NOTIFY";
         cephmsg_names[130] = "MSG_OSD_PG_NOTIFY2";
@@ -281,19 +281,19 @@ function ceph_msg_name:string(type:long)
 function msg_header_dump(msg:long)
 {
 	hdr = &@cast(msg, "Message", @BIN_ALL)->header;
-	printf("%79s: %d\ttid: %d\n", "seq",
+	printf("%81s: %d\ttid: %d\n", "seq",
 		hdr->seq->v,
 		hdr->tid->v);
 }
 
 function client_request_dump(msg:long)
 {
-	printf("%79s: %s\n", "op", ceph_mds_op_name(@cast(msg, "MClientRequest", @BIN_ALL)->head->op->v));
+	printf("%81s: %s\n", "op", ceph_mds_op_name(@cast(msg, "MClientRequest", @BIN_ALL)->head->op->v));
 }
 
 function client_reply_dump(msg:long)
 {
-	printf("%79s: %s\t\tresult: (%d) ",
+	printf("%81s: %s\tresult: (%d) ",
 		"op", ceph_mds_op_name(@cast(msg, "MClientReply", @BIN_ALL)->head->op->v),
 		@cast(msg, "MClientReply", @BIN_ALL)->head->result->v);
 	if (@cast(msg, "MClientReply", @BIN_ALL)->head->op->v & 0x001000)       // CEPH_MDS_OP_WRITE
@@ -306,12 +306,12 @@ function client_reply_dump(msg:long)
 
 function client_session_dump(msg:long)
 {
-	printf("%79s: %s\n", "op", ceph_session_op_name(@cast(msg, "MClientSession", @BIN_ALL)->head->op->v));
+	printf("%81s: %s\n", "op", ceph_session_op_name(@cast(msg, "MClientSession", @BIN_ALL)->head->op->v));
 }
 
 function client_caps_dump(msg:long)
 {
-	printf("%79s: %s\n", "op", ceph_cap_op_name(@cast(msg, "MClientCaps", @BIN_ALL)->head->op->v));
+	printf("%81s: %s\n", "op", ceph_cap_op_name(@cast(msg, "MClientCaps", @BIN_ALL)->head->op->v));
 }
 
 function ceph_msg_dump(msg:long)
