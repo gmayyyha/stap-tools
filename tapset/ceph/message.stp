@@ -33,6 +33,9 @@ probe	init
         cephmsg_names[24] = "CEPH_MSG_CLIENT_REQUEST";
         cephmsg_names[25] = "CEPH_MSG_CLIENT_REQUEST_FORWARD";
         cephmsg_names[26] = "CEPH_MSG_CLIENT_REPLY";
+        cephmsg_names[27] = "CEPH_MSG_CLIENT_RECLAIM";
+        cephmsg_names[28] = "CEPH_MSG_CLIENT_RECLAIM_REPLY";
+        cephmsg_names[29] = "CEPH_MSG_CLIENT_METRICS";
         cephmsg_names[0x310] = "CEPH_MSG_CLIENT_CAPS";
         cephmsg_names[0x311] = "CEPH_MSG_CLIENT_LEASE";
         cephmsg_names[0x312] = "CEPH_MSG_CLIENT_SNAP";
@@ -56,6 +59,7 @@ probe	init
         cephmsg_names[67] = "MSG_MON_PROBE";
         cephmsg_names[68] = "MSG_MON_JOIN";
         cephmsg_names[69] = "MSG_MON_SYNC";
+	cephmsg_names[140] = "MSG_MON_PING";
 
 	/* monitor <-> mon admin tool */
 	cephmsg_names[50] = "MSG_MON_COMMAND";
