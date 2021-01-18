@@ -1,0 +1,38 @@
+#!/usr/bin/stap
+
+global flow;
+
+probe   kernel.function("__x64_sys_io_submit")
+{
+        flow[tid()] = 1;
+}
+
+probe   kernel.function("*@fs/aio.c").call
+,       kernel.function("*@lib/iov_iter.c").call
+,       kernel.function("*@fs/read_write.c").call
+,       module("xfs").function("*@fs/xfs/xfs_file.c").call
+,       module("ext4").function("*@fs/ext4/file.c").call
+{
+        if (flow[tid()]) {
+                printf("%s -> %s\n", thread_indent(4), ppfunc());
+        }
+}
+
+probe   kernel.function("*@fs/aio.c").return
+,       kernel.function("*@lib/iov_iter.c").return
+,       kernel.function("*@fs/read_write.c").return
+,       module("xfs").function("*@fs/xfs/xfs_file.c").return
+,       module("ext4").function("*@fs/ext4/file.c").return
+{
+        if (flow[tid()]) {
+                printf("%s <- %s\n", thread_indent(-4), ppfunc());
+        }
+}
+
+probe   kernel.function("__x64_sys_io_submit").return
+{
+        if (flow[tid()]) {
+                printf("%s <- %s\n", thread_indent(-4), ppfunc());
+                flow[tid()] = 0;
+        }
+}
