@@ -1,0 +1,9 @@
+#!/usr/bin/stap
+
+probe   module("fuse").function("fuse_request_send_background_locked")
+{
+        printf("max_background=%d, congestion_threshold=%d\n", $fc->max_background,
+                                                               $fc->congestion_threshold);
+        print_backtrace();
+        println();
+}
