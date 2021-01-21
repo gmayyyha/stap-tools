@@ -1,18 +1,22 @@
-#!/usr/bin/stap
+#!/usr/bin/env stap
 
 global flow;
 
-probe   kernel.function("__x64_sys_io_uring_enter")
+probe	kernel.function("__x64_sys_io_uring_enter")
 ,	kernel.function("io_worker_handle_work")
 ,	kernel.function("io_uring_setup")
+,	kernel.function("io_complete_rw")
 {
     flow[tid()] = 1;
 }
 
 probe   kernel.function("*@fs/io_uring.c").call
 ,	kernel.function("*@fs/io-wq.c").call
+,	kernel.function("*@fs/file.c").call
 ,	kernel.function("*@fs/read_write.c").call
 ,	kernel.function("*@lib/iov_iter.c").call
+,	kernel.function("*@mm/filemap.c").call
+,	kernel.function("*@mm/mmap.c").call
 ,	module("xfs").function("*@fs/xfs/xfs_file.c").call
 ,	module("ext4").function("*@fs/ext4/file.c").call
 {
@@ -23,8 +27,11 @@ probe   kernel.function("*@fs/io_uring.c").call
 
 probe   kernel.function("*@fs/io_uring.c").return
 ,	kernel.function("*@fs/io-wq.c").return
+,	kernel.function("*@fs/file.c").return
 ,	kernel.function("*@fs/read_write.c").return
 ,	kernel.function("*@lib/iov_iter.c").return
+,	kernel.function("*@mm/filemap.c").return
+,	kernel.function("*@mm/mmap.c").return
 ,	module("xfs").function("*@fs/xfs/xfs_file.c").return
 ,	module("ext4").function("*@fs/ext4/file.c").return
 {
@@ -36,6 +43,7 @@ probe   kernel.function("*@fs/io_uring.c").return
 probe   kernel.function("__x64_sys_io_uring_enter").return
 ,	kernel.function("io_worker_handle_work").return
 ,	kernel.function("io_uring_setup").return
+,	kernel.function("io_complete_rw").return
 {
     if (flow[tid()]) {
         printf("%s <- %s\n", thread_indent(-4), ppfunc());
