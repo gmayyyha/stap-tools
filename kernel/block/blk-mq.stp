@@ -1,0 +1,142 @@
+#!/usr/bin/env stap
+
+global BLK_MQ_REQ_RESERVED = 2
+global BLK_MQ_REQ_INTERNAL = 4	// linux/blk-mq.h
+
+global REQ_OP_BITS = 8 // linux/blk_types.h
+global REQ_OP_MASK = 255 
+global REQ_OP_READ = 0
+global REQ_OP_DISCARD = 3
+
+global REQ_SYNC = 2048
+global REQ_FUA = 131072
+global REQ_PREFLUSH = 262144
+
+global QUEUE_FLAG_NOMERGES = 5       /* disable merge attempts */
+
+global flow;
+
+probe	kernel.function("wb_writeback")
+,	kernel.function("new_sync_read")
+,	kernel.function("new_sync_write")
+{
+	if (execname()  == "a.out"
+		|| execname() =~ "kworker/u82"
+		) {
+		flow[tid()] ++;
+	}
+}
+
+probe	kernel.function("wb_writeback").return
+,	kernel.function("new_sync_read").return
+,	kernel.function("new_sync_write").return
+{
+	if (flow[tid()]) {
+		flow[tid()] --;
+	}
+}
+
+/*
+probe	module("nbd").function("nbd_queue_rq")
+{
+	flow[tid()] = 1;
+}
+
+probe	module("nbd").function("nbd_queue_rq").return
+{
+	if (flow[tid()]) 
+		flow[tid()] = 0;
+}
+*/
+
+probe	module("nbd").function("*").call
+,	kernel.function("*@fs/read_write.c").call
+,	kernel.function("*@fs/fs-writeback.c").call
+,	kernel.function("*@mm/readahead.c").call
+,	kernel.function("*@mm/filemap.c").call
+,	kernel.function("*@block/blk*.c").call
+,	kernel.function("*@block/mq*.c").call
+,	kernel.function("*@block/elevator.c").call
+{
+	if (flow[tid()]) {
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+	}
+}
+
+probe	module("nbd").function("*").return
+,	kernel.function("*@fs/read_write.c").return
+,	kernel.function("*@fs/fs-writeback.c").return
+,	kernel.function("*@mm/readahead.c").return
+,	kernel.function("*@mm/filemap.c").call
+,	kernel.function("*@block/blk*.c").return
+,	kernel.function("*@block/mq*.c").return
+,	kernel.function("*@block/elevator.c").return
+{
+	if (flow[tid()]) {
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+	}
+}
+
+probe	kernel.function("blk_mq_get_tag")
+{
+	if (flow[tid()]) {
+		if ($data->flags & BLK_MQ_REQ_INTERNAL) 
+			printf("%s\t", "sched_tags");
+		else
+			printf("%s\t", "tags");
+		
+
+		if ($data->flags & BLK_MQ_REQ_RESERVED) 
+			printf("%s\n", "breserved_tags");
+		else
+			printf("%s\n", "bitmap_tags");
+	}
+		
+}
+
+probe	kernel.function("__blk_mq_get_tag").return
+{
+	if (flow[tid()])
+		printf("tag: %d\n", $return);
+}
+
+probe	kernel.function("blk_mq_make_request")
+{
+	if (flow[tid()]) {
+		task = pid2task(pid())
+		printf("plug : %p\n", task->plug);
+		printf("read : %d\n", !op_is_write($bio->bi_opf));
+		printf("write: %d\n", op_is_write($bio->bi_opf));
+		printf("flush: %d\n", op_is_flush($bio->bi_opf));
+		printf("sync : %d\n", op_is_sync($bio->bi_opf));
+		printf("nr_hw_queues: %d\n", $q->nr_hw_queues);
+		printf("nomerges: %d\n", $q->queue_flags & QUEUE_FLAG_NOMERGES);
+	}
+}
+
+probe	kernel.function("__writeback_single_inode")
+{
+	if (flow[tid()]) 
+		printf("%s\n", inode_name($inode));
+}
+
+function op_is_write:long (op:long)
+{
+	return (op & 1)
+}
+
+function op_is_flush:long (op:long)
+{
+	return (op & (REQ_FUA | REQ_PREFLUSH))
+}
+
+function op_is_sync:long (op:long)
+{
+	return (op & REQ_OP_MASK) == REQ_OP_READ ||
+                 (op & (REQ_SYNC | REQ_FUA | REQ_PREFLUSH))
+}
+
+function op_is_discard:long (op:long)
+{
+	return (op & REQ_OP_MASK) == REQ_OP_DISCARD;
+}
