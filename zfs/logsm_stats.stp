@@ -1,0 +1,50 @@
+#!/usr/bin/env stap
+
+global spa;
+global txg;
+global nblocks_added;
+global total_nblocks;
+global total_nlogs;
+global metaslabs_flushed;
+global log_sm_blksz = 131072; /* 128K */
+
+probe	module("zfs").function("spa_sync")
+{
+	spa = $spa;
+	txg = $txg;
+}
+
+probe	module("zfs").function("metaslab_flush_update")
+{
+	if (spa == $msp->ms_group->mg_vd->vdev_spa) {
+		metaslabs_flushed++;
+	}
+}
+
+probe	module("zfs").function("space_map_close")
+{
+	if (@cast(spa, "struct spa")->spa_syncing_log_sm == $sm) {
+		total_nlogs = @cast(spa, "struct spa")->spa_sm_logs_by_txg->avl_numnodes;
+		nblocks_added = @cast(spa, "struct spa")->spa_syncing_log_sm->sm_phys->smp_length / log_sm_blksz;
+		
+		rem = @cast(spa, "struct spa")->spa_syncing_log_sm->sm_phys->smp_length % log_sm_blksz;
+		if (rem != 0) {
+			nblocks_added += 1;
+		}
+	}
+}
+
+probe   module("zfs").function("spa_sync").return
+{
+	if (spa == @entry($spa)) {
+		total_nblocks = @entry($spa->spa_unflushed_stats->sus_nblocks);
+		printf("txg %u | %u +blocks | %u total_blocks | %u logs | %u flushed | %s\n",
+		    txg, nblocks_added, total_nblocks, total_nlogs, metaslabs_flushed, ctime(gettimeofday_s()));
+
+		txg               = 0;
+		nblocks_added     = 0;
+		total_nblocks     = 0;
+		total_nlogs       = 0;
+		metaslabs_flushed = 0;
+	}
+}
