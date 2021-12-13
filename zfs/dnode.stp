@@ -1,0 +1,175 @@
+#!/usr/bin/env stap
+
+probe	module("zfs").function("dnode_create")
+{
+	printf("%-25s%ld\t%s\n", ppfunc(), $object, ot_name($dnp->dn_type));
+	print_backtrace(); println();
+}
+
+probe   module("zfs").function("dmu_object_alloc_impl").return
+{
+	printf("%-25s%u\t%-8s%-25s%-25s\n",
+			ppfunc(),
+			$return,
+			get_objset_type(@entry($os->os_phys->os_type)),
+			ot_name(@entry($ot)),
+			ot_name(@entry($bonustype)));
+//	print_backtrace(); println();
+}
+
+probe	module("zfs").function("zap_add_impl")
+{
+	printf("%-25s%u\t%s\t%u\n", ppfunc(),
+			$zap->zap_object,
+			kernel_string($key),
+			kernel_int($val));
+//	print_backtrace();
+//	println();
+}
+
+probe	module("zfs").function("vdev_disk_open").return
+{
+	printf("%-25s%d\t%u\t%u\t%u\t%u\n", ppfunc(),
+			@entry($v->vdev_id),
+			kernel_long(@entry($psize)),
+			kernel_long(@entry($max_psize)),
+			kernel_long(@entry($logical_ashift)),
+			kernel_long(@entry($physical_ashift)));
+}
+
+
+probe	module("zfs").function("metaslab_init")
+{
+	printf("%-25sid=%u ms_start=%x\tms_size=%x vdev_id=%u object=%ld vdev_ashift=%d\n",
+			ppfunc(),
+			$id,
+			$id << $mg->mg_vd->vdev_ms_shift,
+			1 << $mg->mg_vd->vdev_ms_shift,
+			$mg->mg_vd->vdev_id,
+			$object,
+			$mg->mg_vd->vdev_ashift);
+//	print_backtrace(); println();
+}
+
+probe	module("zfs").function("vdev_metaslab_set_size")
+{
+	printf("%-25s%d\t%u\t%d\n", ppfunc(),
+			$vd->vdev_id,
+			$vd->vdev_asize,
+			$vd->vdev_asize >> 29); // zfs_vdev_default_ms_shift 512M
+}
+
+probe	module("zfs").function("space_map_open_impl")
+{
+	printf("%-25s%ld\t%x\t%x\n", ppfunc(),
+			$sm->sm_object,
+			$sm->sm_start,
+			$sm->sm_size);
+}
+
+probe	module("zfs").function("space_map_write_seg")
+{
+	printf("%-25s%ld\t%s  range: %010x-%010x  size: %06x vdev: %06u words: %d\t%u\n", ppfunc(),
+			$sm->sm_object,
+			$maptype ? "F" : "A",
+			$rstart,
+			$rend,
+			$rend - $rstart,
+			$vdev_id,
+			$words,
+			$tx->tx_txg);
+}
+
+probe	module("zfs").function("dnode_next_offset")
+{
+	printf("%-25s%u\t%d\t0x%x\t%d\n", ppfunc(),
+			$dn->dn_object,
+			$flags, kernel_long($offset),
+			kernel_long($offset)/512);
+//	print_backtrace(); println();
+}
+
+probe	module("zfs").function("metaslab_alloc")
+{
+	printf("%-25s%s\t%d\t%d\t%d\n", ppfunc(),
+			ot_name(BP_GET_TYPE($bp)),
+			$ndvas,
+			$psize,
+			$txg);
+	print_backtrace(); println();
+}
+
+probe	module("zfs").function("metaslab_alloc_dva").return
+{
+	printf("%-25s[%d] %d:%x:%x\t%d\n", ppfunc(),
+			@entry($d),
+			DVA_GET_VDEV(@entry(&$dva[$d])),
+			DVA_GET_OFFSET(@entry(&$dva[$d])),
+			DVA_GET_ASIZE(@entry(&$dva[$d])),
+			@entry($psize));
+
+	print_backtrace(); println();
+}
+
+probe	module("zfs").function("metaslab_block_alloc").return
+{
+	printf("%-25s%u\t%x\t%x\t%x\t%d\n", ppfunc(),
+			@entry($msp->ms_id),
+			@entry($msp->ms_id) << @entry($msp->ms_group->mg_vd->vdev_ms_shift),
+			$return,
+			@entry($size),
+			@entry($txg));
+}
+
+
+probe	module("zfs").function("zio_vdev_child_io")
+{
+	off = $offset;
+	if ($vd->vdev_ops->vdev_op_leaf) {
+		off += 4194304
+	}
+	printf("%-25s%d:%x -> %x:%x\n", ppfunc(),
+			$vd->vdev_id,
+			$offset,
+			off,
+			$size);
+}
+
+/*
+probe	module("zfs").function("metaslab_group_alloc").return
+{
+	printf("%-25s%x\n", ppfunc(), $return);
+}
+
+probe	module("zfs").function("dmu_read")
+{
+	printf("%-25s%u\t%x\t%x\n", ppfunc(),
+			$object,
+			$offset,
+			$size);
+}
+
+probe	module("zfs").function("range_tree_add")
+{
+	printf("%-25s%x\t%x\n", ppfunc(),
+			$start,
+			$size);
+}
+
+probe	module("zfs").function("__dmu_object_info_from_dnode")
+{
+	printf("%u\t%s\n",
+			$dn->dn_object,
+			dmu_object_type[$dn->dn_type]);
+}
+
+probe	module("zfs").function("vdev_open").return
+{
+	printf("%-25s%d\t%u\t%u\t%u\n", ppfunc(),
+			@entry($vd->vdev_id),
+			@entry($vd->vdev_asize),
+			@entry($vd->vdev_ms_count),
+			@entry($vd->vdev_guid));
+}
+
+*/

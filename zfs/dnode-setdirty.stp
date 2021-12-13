@@ -1,0 +1,23 @@
+#!/usr/bin/env stap
+probe   module("zfs").function("dnode_setdirty")
+{
+	printf("%-25s\t%s\t%d\t%s\t%s\t%s\t%d\t%d\n", ppfunc(),
+			$dn->dn_objset->os_dsl_dataset
+				?  kernel_string($dn->dn_objset->os_dsl_dataset->ds_dir->dd_myname)
+				: "",
+			$dn->dn_object,
+			get_objset_type($dn->dn_objset->os_phys->os_type),
+			ot_name($dn->dn_type),
+			ot_name($dn->dn_bonustype),
+			$dn->dn_nlevels,
+			$tx->tx_txg);
+	print_backtrace(); println();
+}
+
+probe	module("zfs").function("txg_quiesce")
+{
+	printf("%-25s txg=%d quiesce_txg=%d sync_txg=%d\n", ppfunc(),
+			$txg,
+			$dp->dp_tx->tx_quiesce_txg_waiting,
+			$dp->dp_tx->tx_sync_txg_waiting);
+}

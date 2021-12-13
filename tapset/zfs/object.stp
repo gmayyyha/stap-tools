@@ -1,0 +1,408 @@
+#!/usr/bin/env stap
+
+global objset_types;
+global dmu_tx_hold_type;
+global dbuf_states;
+global override_states;
+global zio_compress;
+global zio_priority;
+
+probe   init
+{
+        objset_types[0] = "NONE";
+        objset_types[1] = "META";
+        objset_types[2] = "ZPL";
+        objset_types[3] = "ZVOL";
+        objset_types[4] = "OTHER";
+        objset_types[5] = "ANY";
+
+	dmu_tx_hold_type[0] = "THT_NEWOBJECT";
+        dmu_tx_hold_type[1] = "THT_WRITE";
+        dmu_tx_hold_type[2] = "THT_BONUS";
+        dmu_tx_hold_type[3] = "THT_FREE";
+        dmu_tx_hold_type[4] = "THT_ZAP";
+        dmu_tx_hold_type[5] = "THT_SPACE";
+        dmu_tx_hold_type[6] = "THT_SPILL";
+        dmu_tx_hold_type[7] = "THT_NUMTYPES";
+
+	dbuf_states[-1] = "DB_SEARCH";
+        dbuf_states[0] = "DB_UNCACHED";
+        dbuf_states[1] = "DB_FILL";
+        dbuf_states[2] = "DB_NOFILL";
+        dbuf_states[3] = "DB_READ";
+        dbuf_states[4] = "DB_CACHED";
+        dbuf_states[5] = "DB_EVICTING";
+
+	override_states[0] = "DR_NOT_OVERRIDDEN";
+        override_states[1] = "DR_IN_DMU_SYNC";
+        override_states[2] = "DR_OVERRIDDEN";
+
+	zio_compress[0] = "ZIO_COMPRESS_INHERIT";
+        zio_compress[1] = "ZIO_COMPRESS_ON";
+        zio_compress[2] = "ZIO_COMPRESS_OFF";
+        zio_compress[3] = "ZIO_COMPRESS_LZJB";
+        zio_compress[4] = "ZIO_COMPRESS_EMPTY";
+        zio_compress[5] = "ZIO_COMPRESS_GZIP_1";
+        zio_compress[6] = "ZIO_COMPRESS_GZIP_2";
+        zio_compress[7] = "ZIO_COMPRESS_GZIP_3";
+        zio_compress[8] = "ZIO_COMPRESS_GZIP_4";
+        zio_compress[9] = "ZIO_COMPRESS_GZIP_5";
+        zio_compress[10] = "ZIO_COMPRESS_GZIP_6";
+        zio_compress[11] = "ZIO_COMPRESS_GZIP_7";
+        zio_compress[12] = "ZIO_COMPRESS_GZIP_8";
+        zio_compress[13] = "ZIO_COMPRESS_GZIP_9";
+        zio_compress[14] = "ZIO_COMPRESS_ZLE";
+        zio_compress[15] = "ZIO_COMPRESS_LZ4";
+        zio_compress[16] = "ZIO_COMPRESS_ZSTD";
+        zio_compress[17] = "ZIO_COMPRESS_FUNCTIONS";
+
+	zio_priority[0] = "ZIO_PRIORITY_SYNC_READ";
+        zio_priority[1] = "ZIO_PRIORITY_SYNC_WRITE";        /* ZIL */
+        zio_priority[2] = "ZIO_PRIORITY_ASYNC_READ";        /* prefetch */
+        zio_priority[3] = "ZIO_PRIORITY_ASYNC_WRITE";       /* spa_sync() */
+        zio_priority[4] = "ZIO_PRIORITY_SCRUB";             /* asynchronous scrub/resilver reads */
+        zio_priority[5] = "ZIO_PRIORITY_REMOVAL";           /* reads/writes for vdev removal */
+        zio_priority[6] = "ZIO_PRIORITY_INITIALIZING";      /* initializing I/O */
+        zio_priority[7] = "ZIO_PRIORITY_TRIM";              /* trim I/O (discard) */
+        zio_priority[8] = "ZIO_PRIORITY_REBUILD";           /* reads/writes for vdev rebuild */
+        zio_priority[9] = "ZIO_PRIORITY_NUM_QUEUEABLE";
+        zio_priority[10] = "ZIO_PRIORITY_NOW";
+}
+
+%{
+/*
+ * The DVA size encodings for LSIZE and PSIZE support blocks up to 32MB.
+ * The ASIZE encoding should be at least 64 times larger (6 more bits)
+ * to support up to 4-way RAID-Z mirror mode with worst-case gang block
+ * overhead, three DVAs per bp, plus one more bit in case we do anything
+ * else that expands the ASIZE.
+ */
+#define SPA_LSIZEBITS           16      /* LSIZE up to 32M (2^16 * 512) */
+#define SPA_PSIZEBITS           16      /* PSIZE up to 32M (2^16 * 512) */
+#define SPA_ASIZEBITS           24      /* ASIZE up to 64 times larger  */
+
+#define SPA_COMPRESSBITS        7
+#define SPA_VDEVBITS            24
+#define SPA_COMPRESSMASK        ((1U << SPA_COMPRESSBITS) - 1)
+
+#define SPA_MINBLOCKSHIFT       9
+
+#define SPA_BLKPTRSHIFT 7               /* blkptr_t is 128 bytes        */
+#define SPA_DVAS_PER_BP 3               /* Number of DVAs in a bp       */
+#define SPA_SYNC_MIN_VDEVS 3            /* min vdevs to update during sync */
+
+#define P2PHASE(x, align)       ((x) & ((align) - 1))
+#define BF32_DECODE(x, low, len)        P2PHASE((x) >> (low), 1U << (len))
+#define BF64_DECODE(x, low, len)        P2PHASE((x) >> (low), 1ULL << (len))
+#define BF32_ENCODE(x, low, len)        (P2PHASE((x), 1U << (len)) << (low))
+#define BF64_ENCODE(x, low, len)        (P2PHASE((x), 1ULL << (len)) << (low))
+
+#define BF32_GET(x, low, len)           BF32_DECODE(x, low, len)
+#define BF64_GET(x, low, len)           BF64_DECODE(x, low, len)
+
+#define BF32_GET_SB(x, low, len, shift, bias)   \
+        ((BF32_GET(x, low, len) + (bias)) << (shift))
+#define BF64_GET_SB(x, low, len, shift, bias)   \
+        ((BF64_GET(x, low, len) + (bias)) << (shift))
+
+typedef struct dva {
+        uint64_t        dva_word[2];
+} dva_t;
+
+typedef struct zio_cksum {
+        uint64_t        zc_word[4];
+} zio_cksum_t;
+
+typedef struct blkptr {
+        dva_t           blk_dva[SPA_DVAS_PER_BP]; /* Data Virtual Addresses */
+        uint64_t        blk_prop;       /* size, compression, type, etc     */
+        uint64_t        blk_pad[2];     /* Extra space for the future       */
+        uint64_t        blk_phys_birth; /* txg when block was allocated     */
+        uint64_t        blk_birth;      /* transaction group at birth       */
+        uint64_t        blk_fill;       /* fill count                       */
+        zio_cksum_t     blk_cksum;      /* 256-bit checksum                 */
+} blkptr_t;
+
+
+#define DMU_OT_NEWTYPE	0x80
+#define DMU_OT_METADATA 0x40
+#define DMU_OT_ENCRYPTED 0x20
+#define DMU_OT_BYTESWAP_MASK 0x1f
+
+#define	FALSE	0
+#define	TRUE	1
+
+typedef enum {
+        B_FALSE = 0,
+        B_TRUE = 1
+} boolean_t;
+
+typedef enum dmu_object_byteswap {
+        DMU_BSWAP_UINT8,
+        DMU_BSWAP_UINT16,
+        DMU_BSWAP_UINT32,
+        DMU_BSWAP_UINT64,
+        DMU_BSWAP_ZAP,
+        DMU_BSWAP_DNODE,
+        DMU_BSWAP_OBJSET,
+        DMU_BSWAP_ZNODE,
+        DMU_BSWAP_OLDACL,
+        DMU_BSWAP_ACL,
+        /*
+         * Allocating a new byteswap type number makes the on-disk format
+         * incompatible with any other format that uses the same number.
+         *
+         * Data can usually be structured to work with one of the
+         * DMU_BSWAP_UINT* or DMU_BSWAP_ZAP types.
+         */
+        DMU_BSWAP_NUMFUNCS
+} dmu_object_byteswap_t;
+
+/*
+ * Defines a uint8_t object type. Object types specify if the data
+ * in the object is metadata (boolean) and how to byteswap the data
+ * (dmu_object_byteswap_t). All of the types created by this method
+ * are cached in the dbuf metadata cache.
+ */
+#define DMU_OT(byteswap, metadata, encrypted) \
+        (DMU_OT_NEWTYPE | \
+        ((metadata) ? DMU_OT_METADATA : 0) | \
+        ((encrypted) ? DMU_OT_ENCRYPTED : 0) | \
+        ((byteswap) & DMU_OT_BYTESWAP_MASK))
+
+typedef enum dmu_object_type {
+        DMU_OT_NONE,
+        /* general: */
+        DMU_OT_OBJECT_DIRECTORY,        /* ZAP */
+        DMU_OT_OBJECT_ARRAY,            /* UINT64 */
+        DMU_OT_PACKED_NVLIST,           /* UINT8 (XDR by nvlist_pack/unpack) */
+        DMU_OT_PACKED_NVLIST_SIZE,      /* UINT64 */
+        DMU_OT_BPOBJ,                   /* UINT64 */
+        DMU_OT_BPOBJ_HDR,               /* UINT64 */
+        /* spa: */
+        DMU_OT_SPACE_MAP_HEADER,        /* UINT64 */
+        DMU_OT_SPACE_MAP,               /* UINT64 */
+        /* zil: */
+        DMU_OT_INTENT_LOG,              /* UINT64 */
+        /* dmu: */
+        DMU_OT_DNODE,                   /* DNODE */
+        DMU_OT_OBJSET,                  /* OBJSET */
+        /* dsl: */
+        DMU_OT_DSL_DIR,                 /* UINT64 */
+        DMU_OT_DSL_DIR_CHILD_MAP,       /* ZAP */
+        DMU_OT_DSL_DS_SNAP_MAP,         /* ZAP */
+        DMU_OT_DSL_PROPS,               /* ZAP */
+        DMU_OT_DSL_DATASET,             /* UINT64 */
+        /* zpl: */
+        DMU_OT_ZNODE,                   /* ZNODE */
+        DMU_OT_OLDACL,                  /* Old ACL */
+        DMU_OT_PLAIN_FILE_CONTENTS,     /* UINT8 */
+        DMU_OT_DIRECTORY_CONTENTS,      /* ZAP */
+        DMU_OT_MASTER_NODE,             /* ZAP */
+        DMU_OT_UNLINKED_SET,            /* ZAP */
+        /* zvol: */
+        DMU_OT_ZVOL,                    /* UINT8 */
+        DMU_OT_ZVOL_PROP,               /* ZAP */
+        /* other; for testing only! */
+        DMU_OT_PLAIN_OTHER,             /* UINT8 */
+        DMU_OT_UINT64_OTHER,            /* UINT64 */
+        DMU_OT_ZAP_OTHER,               /* ZAP */
+        /* new object types: */
+        DMU_OT_ERROR_LOG,               /* ZAP */
+        DMU_OT_SPA_HISTORY,             /* UINT8 */
+        DMU_OT_SPA_HISTORY_OFFSETS,     /* spa_his_phys_t */
+        DMU_OT_POOL_PROPS,              /* ZAP */
+        DMU_OT_DSL_PERMS,               /* ZAP */
+        DMU_OT_ACL,                     /* ACL */
+        DMU_OT_SYSACL,                  /* SYSACL */
+        DMU_OT_FUID,                    /* FUID table (Packed NVLIST UINT8) */
+        DMU_OT_FUID_SIZE,               /* FUID table size UINT64 */
+        DMU_OT_NEXT_CLONES,             /* ZAP */
+        DMU_OT_SCAN_QUEUE,              /* ZAP */
+        DMU_OT_USERGROUP_USED,          /* ZAP */
+        DMU_OT_USERGROUP_QUOTA,         /* ZAP */
+        DMU_OT_USERREFS,                /* ZAP */
+        DMU_OT_DDT_ZAP,                 /* ZAP */
+        DMU_OT_DDT_STATS,               /* ZAP */
+        DMU_OT_SA,                      /* System attr */
+        DMU_OT_SA_MASTER_NODE,          /* ZAP */
+        DMU_OT_SA_ATTR_REGISTRATION,    /* ZAP */
+        DMU_OT_SA_ATTR_LAYOUTS,         /* ZAP */
+        DMU_OT_SCAN_XLATE,              /* ZAP */
+        DMU_OT_DEDUP,                   /* fake dedup BP from ddt_bp_create() */
+        DMU_OT_DEADLIST,                /* ZAP */
+        DMU_OT_DEADLIST_HDR,            /* UINT64 */
+	DMU_OT_DSL_CLONES,              /* ZAP */
+        DMU_OT_BPOBJ_SUBOBJ,            /* UINT64 */
+        /*
+         * Do not allocate new object types here. Doing so makes the on-disk
+         * format incompatible with any other format that uses the same object
+         * type number.
+         *
+         * When creating an object which does not have one of the above types
+         * use the DMU_OTN_* type with the correct byteswap and metadata
+         * values.
+         *
+         * The DMU_OTN_* types do not have entries in the dmu_ot table,
+         * use the DMU_OT_IS_METADATA() and DMU_OT_BYTESWAP() macros instead
+         * of indexing into dmu_ot directly (this works for both DMU_OT_* types
+         * and DMU_OTN_* types).
+         */
+        DMU_OT_NUMTYPES,
+
+        /*
+         * Names for valid types declared with DMU_OT().
+         */
+        DMU_OTN_UINT8_DATA = DMU_OT(DMU_BSWAP_UINT8, B_FALSE, B_FALSE),
+        DMU_OTN_UINT8_METADATA = DMU_OT(DMU_BSWAP_UINT8, B_TRUE, B_FALSE),
+        DMU_OTN_UINT16_DATA = DMU_OT(DMU_BSWAP_UINT16, B_FALSE, B_FALSE),
+        DMU_OTN_UINT16_METADATA = DMU_OT(DMU_BSWAP_UINT16, B_TRUE, B_FALSE),
+        DMU_OTN_UINT32_DATA = DMU_OT(DMU_BSWAP_UINT32, B_FALSE, B_FALSE),
+        DMU_OTN_UINT32_METADATA = DMU_OT(DMU_BSWAP_UINT32, B_TRUE, B_FALSE),
+        DMU_OTN_UINT64_DATA = DMU_OT(DMU_BSWAP_UINT64, B_FALSE, B_FALSE),
+        DMU_OTN_UINT64_METADATA = DMU_OT(DMU_BSWAP_UINT64, B_TRUE, B_FALSE),
+        DMU_OTN_ZAP_DATA = DMU_OT(DMU_BSWAP_ZAP, B_FALSE, B_FALSE),
+        DMU_OTN_ZAP_METADATA = DMU_OT(DMU_BSWAP_ZAP, B_TRUE, B_FALSE),
+
+        DMU_OTN_UINT8_ENC_DATA = DMU_OT(DMU_BSWAP_UINT8, B_FALSE, B_TRUE),
+        DMU_OTN_UINT8_ENC_METADATA = DMU_OT(DMU_BSWAP_UINT8, B_TRUE, B_TRUE),
+        DMU_OTN_UINT16_ENC_DATA = DMU_OT(DMU_BSWAP_UINT16, B_FALSE, B_TRUE),
+        DMU_OTN_UINT16_ENC_METADATA = DMU_OT(DMU_BSWAP_UINT16, B_TRUE, B_TRUE),
+        DMU_OTN_UINT32_ENC_DATA = DMU_OT(DMU_BSWAP_UINT32, B_FALSE, B_TRUE),
+        DMU_OTN_UINT32_ENC_METADATA = DMU_OT(DMU_BSWAP_UINT32, B_TRUE, B_TRUE),
+        DMU_OTN_UINT64_ENC_DATA = DMU_OT(DMU_BSWAP_UINT64, B_FALSE, B_TRUE),
+        DMU_OTN_UINT64_ENC_METADATA = DMU_OT(DMU_BSWAP_UINT64, B_TRUE, B_TRUE),
+        DMU_OTN_ZAP_ENC_DATA = DMU_OT(DMU_BSWAP_ZAP, B_FALSE, B_TRUE),
+        DMU_OTN_ZAP_ENC_METADATA = DMU_OT(DMU_BSWAP_ZAP, B_TRUE, B_TRUE),
+} dmu_object_type_t;
+
+typedef struct dmu_object_type_info {
+        dmu_object_byteswap_t   ot_byteswap;
+        boolean_t               ot_metadata;
+        boolean_t               ot_dbuf_metadata_cache;
+        boolean_t               ot_encrypt;
+        char                    *ot_name;
+} dmu_object_type_info_t;
+
+const dmu_object_type_info_t dmu_ot[DMU_OT_NUMTYPES] = {
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, FALSE, "unallocated"           },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "object directory"      },
+        {DMU_BSWAP_UINT64, TRUE,  TRUE,  FALSE, "object array"          },
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, FALSE, "packed nvlist"         },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "packed nvlist size"    },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "bpobj"                 },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "bpobj header"          },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "SPA space map header"  },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "SPA space map"         },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, TRUE,  "ZIL intent log"        },
+        {DMU_BSWAP_DNODE,  TRUE,  FALSE, TRUE,  "DMU dnode"             },
+        {DMU_BSWAP_OBJSET, TRUE,  TRUE,  FALSE, "DMU objset"            },
+        {DMU_BSWAP_UINT64, TRUE,  TRUE,  FALSE, "DSL directory"         },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL directory child map"},
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL dataset snap map"  },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL props"             },
+        {DMU_BSWAP_UINT64, TRUE,  TRUE,  FALSE, "DSL dataset"           },
+        {DMU_BSWAP_ZNODE,  TRUE,  FALSE, FALSE, "ZFS znode"             },
+        {DMU_BSWAP_OLDACL, TRUE,  FALSE, TRUE,  "ZFS V0 ACL"            },
+        {DMU_BSWAP_UINT8,  FALSE, FALSE, TRUE,  "ZFS plain file"        },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "ZFS directory"         },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "ZFS master node"       },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "ZFS delete queue"      },
+        {DMU_BSWAP_UINT8,  FALSE, FALSE, TRUE,  "zvol object"           },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "zvol prop"             },
+        {DMU_BSWAP_UINT8,  FALSE, FALSE, TRUE,  "other uint8[]"         },
+        {DMU_BSWAP_UINT64, FALSE, FALSE, TRUE,  "other uint64[]"        },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "other ZAP"             },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "persistent error log"  },
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, FALSE, "SPA history"           },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "SPA history offsets"   },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "Pool properties"       },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL permissions"       },
+        {DMU_BSWAP_ACL,    TRUE,  FALSE, TRUE,  "ZFS ACL"               },
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, TRUE,  "ZFS SYSACL"            },
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, TRUE,  "FUID table"            },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "FUID table size"       },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL dataset next clones"},
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "scan work queue"       },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "ZFS user/group/project used" },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "ZFS user/group/project quota"},
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "snapshot refcount tags"},
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "DDT ZAP algorithm"     },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "DDT statistics"        },
+        {DMU_BSWAP_UINT8,  TRUE,  FALSE, TRUE,  "System attributes"     },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "SA master node"        },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "SA attr registration"  },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, TRUE,  "SA attr layouts"       },
+        {DMU_BSWAP_ZAP,    TRUE,  FALSE, FALSE, "scan translations"     },
+        {DMU_BSWAP_UINT8,  FALSE, FALSE, TRUE,  "deduplicated block"    },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL deadlist map"      },
+        {DMU_BSWAP_UINT64, TRUE,  TRUE,  FALSE, "DSL deadlist map hdr"  },
+        {DMU_BSWAP_ZAP,    TRUE,  TRUE,  FALSE, "DSL dir clones"        },
+        {DMU_BSWAP_UINT64, TRUE,  FALSE, FALSE, "bpobj subobj"          }
+};
+
+typedef const struct dmu_object_byteswap_info {
+        int      ob_func;
+        char     *ob_name;
+} dmu_object_byteswap_info_t;
+
+const dmu_object_byteswap_info_t dmu_ot_byteswap[DMU_BSWAP_NUMFUNCS] = {
+        {       0,  "uint8"         },
+        {       0,  "uint16"        },
+        {       0,  "uint32"        },
+        {       0,  "uint64"        },
+        {       0,  "zap"           },
+        {       0,  "dnode"         },
+        {       0,  "objset"        },
+        {       0,  "znode"         },
+        {       0,  "oldacl"        },
+        {       0,  "acl"           }
+};
+%}
+
+function ot_name:string (type:long)
+%{
+	dmu_object_type_t type = STAP_ARG_type;
+	if (type < DMU_OT_NUMTYPES)
+		snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", dmu_ot[type].ot_name);
+	else if ((type & DMU_OT_NEWTYPE) &&
+            ((type & DMU_OT_BYTESWAP_MASK) < DMU_BSWAP_NUMFUNCS))
+		snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%s", (dmu_ot_byteswap[type & DMU_OT_BYTESWAP_MASK].ob_name));
+	else
+		snprintf(STAP_RETVALUE, MAXSTRINGLEN, "%ld-%s", (long)type, "UNKNOWN");
+%}
+
+function DVA_GET_VDEV:long (dva:long)
+%{
+	dva_t *dt = (struct dva *)STAP_ARG_dva;
+	STAP_RETVALUE = BF64_GET((dt)->dva_word[0], 32, SPA_VDEVBITS);
+%}
+
+function DVA_GET_ASIZE:long (dva:long)
+%{
+	dva_t *dt = (struct dva *)STAP_ARG_dva;
+        STAP_RETVALUE = BF64_GET_SB((dt)->dva_word[0], 0, SPA_ASIZEBITS, SPA_MINBLOCKSHIFT, 0);
+%}
+
+function DVA_GET_OFFSET:long (dva:long)
+%{
+	dva_t *dt = (struct dva *)STAP_ARG_dva;
+        STAP_RETVALUE = BF64_GET_SB((dt)->dva_word[1], 0, 63, SPA_MINBLOCKSHIFT, 0);
+%}
+
+function DVA_GET_GANG:long (dva:long)
+%{
+	dva_t *dt = (struct dva *)STAP_ARG_dva;
+	STAP_RETVALUE = BF64_GET((dt)->dva_word[1], 63, 1);
+%}
+
+function BP_GET_TYPE:long (bp:long)
+%{
+	blkptr_t *bpt = (blkptr_t *)STAP_ARG_bp;	
+	STAP_RETVALUE = BF64_GET((bpt)->blk_prop, 48, 8);
+%}
+
+function get_objset_type:string (type:long)
+{
+        return (type in objset_types) ? objset_types[type] : sprintf("unknown objset_type %d", type);
+}
