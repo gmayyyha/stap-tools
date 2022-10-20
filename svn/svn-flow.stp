@@ -1,0 +1,102 @@
+#!/usr/bin/env stap
+
+global flow
+
+probe	process(@SVN_BIN).function("main")
+{
+	printf("%s -> %s\n", thread_indent(4), ppfunc())
+	flow[tid()] = 1
+}
+
+probe	process(@SVN_BIN).function("main").return
+{
+	if (flow[tid()]) {
+		flow[tid()] = 0
+	}
+}
+
+
+probe	process(@SVN_BIN).function("*").call
+,	process(@SVN_BIN).library(@LIBSVN_WC).function("*").call
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_file_*").call
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_dir_*").call
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_socket_*").call
+,	process(@SVN_BIN).library(@LIBSVN_SUBR).function("svn_sqlite_*").call
+{
+	if (flow[tid()]) {
+		printf("%s -> %s\n", thread_indent(4), ppfunc())
+	}
+}
+
+probe	process(@SVN_BIN).function("*").return
+,	process(@SVN_BIN).library(@LIBSVN_WC).function("*").return
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_file_*").return
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_dir_*").return
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_socket_*").return
+,	process(@SVN_BIN).library(@LIBSVN_SUBR).function("svn_sqlite_*").return
+{
+	if (flow[tid()]) {
+		printf("%s <- %s\n", thread_indent(-4), ppfunc())
+	}
+}
+
+probe	process(@SVN_BIN).library(@LIBSVN_SUBR).function("prepare_statement")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(), user_string($text))
+}
+
+probe	process(@SVN_BIN).library(@LIBSVN_SUBR).function("svn_sqlite__column_revnum").return
+{
+	if (flow[tid()])
+		printf("%s:\t%d\n", ppfunc(), $return)
+}
+
+probe	process(@SVN_BIN).library(@LIBSVN_SUBR).function("svn_sqlite__column_text").return
+{
+	if (flow[tid()])
+		printf("%s:\t%s(%d)\n", ppfunc(), user_string($return), @entry($column))
+}
+
+probe	process(@SVN_BIN).library(@LIBSVN_SUBR).function("svn_sqlite__column_int*").return
+{
+	if (flow[tid()])
+		printf("%s:\t%d(%d)\n", ppfunc(), $return, @entry($column))
+}
+
+probe	process(@SVN_BIN).library(@LIBSVN_SUBR).function("exec_sql2")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(),($sql ?  user_string($sql) : ""))
+}
+
+probe	process(@SVN_BIN).library(@LIBAPR).function("apr_dir_open")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(), user_string($dirname))
+}
+
+probe	process(@SVN_BIN).library(@LIBAPR).function("apr_dir_read")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(),($finfo->name ? user_string($finfo->name) : ""))
+}
+
+probe	process(@SVN_BIN).library(@LIBAPR).function("apr_file_open")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(), user_string($fname))
+}
+
+probe	process(@SVN_BIN).library(@LIBAPR).function("apr_file_read")
+,	process(@SVN_BIN).library(@LIBAPR).function("apr_file_write")
+{
+	if (flow[tid()])
+		printf("%s:\t%s\n", ppfunc(), user_string($thefile->fname))
+}
+
+probe	process(@SVN_BIN).library(@LIBAPR).function("apr_file_rename")
+{
+	if (flow[tid()])
+		printf("%s:\t%s -> %s\n", ppfunc(), user_string($from_path), user_string($to_path))
+}
