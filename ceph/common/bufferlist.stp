@@ -1,4 +1,5 @@
 global flow
+global write_flow
 global object_chunk
 
 probe   process(@BIN_FUSE).function("ObjectCacher::release_set")
@@ -8,12 +9,33 @@ probe   process(@BIN_FUSE).function("ObjectCacher::release_set")
     printf("%s -> %s\n", thread_indent(4), ppfunc());
 }
 
+probe   process(@BIN_FUSE).function("ObjectCacher::release_set").return
+{
+    printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    flow[tid()] = 0;
+}
+
+probe   process(@BIN_FUSE).function("fuse_ll_write")
+{
+    write_flow[tid()] = 1
+    printf("%s -> %s\n", thread_indent(4), ppfunc());
+    printf("[%d, %d]\t", $off, $size)
+}
+
+probe   process(@BIN_FUSE).function("fuse_ll_write").return
+{
+    write_flow[tid()] = 0
+    printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
 /*
 */
 probe   process(@BIN_FUSE).function("ObjectCacher::*").call
 ,   process(@BIN_FUSE).function("Object::*").call
 ,   process(@BIN_FUSE).function("BufferHead::*").call
+,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*").call
 ,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*::*").call
+,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*::*::*").call
 {
     if (flow[tid()]) {
         printf("%s -> %s\n", thread_indent(4), ppfunc());
@@ -23,24 +45,27 @@ probe   process(@BIN_FUSE).function("ObjectCacher::*").call
 probe   process(@BIN_FUSE).function("ObjectCacher::*").return
 ,   process(@BIN_FUSE).function("Object::*").return
 ,   process(@BIN_FUSE).function("BufferHead::*").return
+,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*").return
 ,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*::*").return
+,   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::*::*::*").return
 {
     if (flow[tid()]) {
         printf("%s <- %s\n", thread_indent(-4), ppfunc());
     }
 }
 
-probe   process(@BIN_FUSE).function("ObjectCacher::release_set").return
-{
-    printf("%s <- %s\n", thread_indent(-4), ppfunc());
-    flow[tid()] = 0;
-}
-
-
+/*
+*/
 probe   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::ptr::release")
 {
     if (flow[tid()]) {
- //       printf("raw->len: %d\tdata: [%d, %d]\n", $this->_raw->len, $this->_off, $this->_len);
+        printf("raw->len: %d\tdata: [%d, %d]\n", $this->_raw->len, $this->_off, $this->_len);
+    }
+}
+
+probe   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::raw::~raw")
+{
+    if (flow[tid()]) {
         object_chunk ++;
     }
 }
@@ -75,5 +100,12 @@ probe   process(@BIN_FUSE).function("BufferHead::~BufferHead").return
     if (flow[tid()]) {
         printf("object_chunk: %d\n", object_chunk);
         object_chunk = 0;
+    }
+}
+
+probe   process(@BIN_FUSE).library("libceph-common*").function("ceph::buffer::*::raw_combined::raw_combined")
+{
+    if (write_flow[tid()]) {
+        printf("%d\t%d\n", $l, $align)
     }
 }
