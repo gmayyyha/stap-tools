@@ -1,0 +1,63 @@
+@define ISCSI_TGT       %( "/home/spdk/build/bin/iscsi_tgt" %)
+
+global flow;
+
+probe   process(@ISCSI_TGT).function("iscsi_handle_incoming_pdus")
+{
+        flow[tid()] ++;
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe   process(@ISCSI_TGT).function("iscsi_handle_incoming_pdus").return
+{
+        if (flow[tid()]) {
+                flow[tid()] --;
+                printf("%s <- %s\n", thread_indent(-4), ppfunc());
+        }
+}
+
+probe   process(@ISCSI_TGT).function("*bdev*").call
+,       process(@ISCSI_TGT).function("*io_device*").call
+,       process(@ISCSI_TGT).function("*reactors*").call
+,       process(@ISCSI_TGT).function("*app*").call
+#,      process(@ISCSI_TGT).function("spdk_*log*").call
+,       process(@ISCSI_TGT).function("*iscsi_i*").call
+,       process(@ISCSI_TGT).function("*iscsi_pdu*").call
+,       process(@ISCSI_TGT).function("*io_channel*").call
+,       process(@ISCSI_TGT).function("spdk_sock*").call
+,       process(@ISCSI_TGT).function("spdk_thread_c*").call
+,       process(@ISCSI_TGT).function("*rbd*").call
+{
+        if (flow[tid()]) {
+                printf("%s -> %s\n", thread_indent(4), ppfunc());
+        }
+}
+
+probe   process(@ISCSI_TGT).function("*bdev*").return
+,       process(@ISCSI_TGT).function("*io_device*").return
+,       process(@ISCSI_TGT).function("*reactors*").return
+,       process(@ISCSI_TGT).function("*app*").return
+#,      process(@ISCSI_TGT).function("spdk_*log*").return
+,       process(@ISCSI_TGT).function("*iscsi_i*").return
+,       process(@ISCSI_TGT).function("*iscsi_pdu*").return
+,       process(@ISCSI_TGT).function("*io_channel*").return
+,       process(@ISCSI_TGT).function("spdk_sock*").return
+,       process(@ISCSI_TGT).function("spdk_thread_c*").return
+,       process(@ISCSI_TGT).function("*rbd*").return
+{
+        if (flow[tid()]) {
+                printf("%s <- %s\n", thread_indent(-4), ppfunc());
+        }
+}
+
+probe   process(@ISCSI_TGT).function("bdev_channel_get_io")
+{
+        if (flow[tid()])
+                printf("%s\t%d\n", user_string($channel->bdev->name), $channel->channel->ref)
+}
+
+probe   process(@ISCSI_TGT).function("bdev_io_submit")
+{
+        if (flow[tid()])
+                printf("%s\n", user_string($bdev_io->bdev->name))
+}
