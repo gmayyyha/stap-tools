@@ -1,0 +1,30 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe	kernel.function("blk_mq_complete_request")
+{
+	flow[task_current()] = 1;
+}
+
+probe	kernel.function("blk_mq_complete_request").return
+{
+	if (flow[task_current()]) 
+		flow[task_current()] = 0;
+}
+
+probe	kernel.function("*@block/blk*.c").call
+,	kernel.function("*@block/mq*.c").call
+{
+	if (flow[task_current()]) {
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+	}
+}
+
+probe	kernel.function("*@block/blk*.c").return
+,	kernel.function("*@block/mq*.c").return
+{
+	if (flow[task_current()]) {
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+	}
+}

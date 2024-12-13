@@ -1,0 +1,35 @@
+global flow;
+
+probe   module("dm_cache").function("process_deferred_bios")
+,   module("dm_cache").function("mg_update_metadata")
+{
+    flow[task_current()] = 1;
+}
+
+probe   module("dm_cache").function("process_deferred_bios").return
+,   module("dm_cache").function("mg_update_metadata").return
+{
+    flow[task_current()] = 0;
+}
+
+probe   module("dm_mod").function("*").call
+,   module("scsi_mod").function("*").call
+,   module("dm_cache").function("*").call
+,  kernel.function("*@./block/blk-core.c").call
+,  kernel.function("*@./block/bio.c").call
+{
+    if (flow[task_current()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+    }
+}
+
+probe   module("dm_mod").function("*").return
+,   module("scsi_mod").function("*").return
+,   module("dm_cache").function("*").return
+,  kernel.function("*@./block/blk-core.c").return
+,  kernel.function("*@./block/bio.c").return
+{
+    if (flow[task_current()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
