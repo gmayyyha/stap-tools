@@ -1,0 +1,24 @@
+#!/usr/bin/env stap
+
+probe	process(@BIN_FUSE).function("Client::wait_on_list")
+,	process(@BIN_FUSE).function("Client::signal_cond_list")
+,	process(@BIN_FUSE).function("Client::dump_mds_requests")
+{
+	print_ubacktrace();
+	println();
+}
+
+probe	process(@BIN_FUSE).library("libceph-common.so*").function("Log::set_log_file")
+{
+    printf("%s\n", user_string($fn->_M_str));
+	print_ubacktrace();
+	println();
+}
+
+probe	process(@BIN_FUSE).library("libceph-common.so*").function("Log::reopen_log_file")
+,	process(@BIN_FUSE).library("libceph-common.so*").function("Log::submit_entry")
+{
+    printf("%d\t%d\n", $this->m_fd, tid());
+	print_ubacktrace();
+	println();
+}

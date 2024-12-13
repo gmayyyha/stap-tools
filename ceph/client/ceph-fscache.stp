@@ -1,0 +1,52 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe   module("ceph").function("ceph_fscache_register_inode_cookie")
+,   module("ceph").function("ceph_read_iter")
+,   module("ceph").function("ceph_write_iter")
+,   module("fscache").function("fscache_op_work_func")
+,   module("fscache").function("fscache_object_work_func")
+{
+    flow[tid()] = 1;
+}
+
+probe   module("ceph").function("ceph_fscache_register_inode_cookie").return
+,   module("ceph").function("ceph_read_iter").return
+,   module("ceph").function("ceph_write_iter").return
+,   module("fscache").function("fscache_op_work_func").return
+,   module("fscache").function("fscache_object_work_func").return
+{
+    if (flow[tid()]) {
+        flow[tid()] = 0;
+    }
+}
+
+probe   module("fscache").function("*").call
+,   module("cachefiles").function("*").call
+,   module("ceph").function("*").call
+,   kernel.function("*vfs*").call
+,   kernel.function("*@./mm/filemap.c").call
+{
+    if (flow[tid()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+    }
+}
+
+probe   module("fscache").function("*").return
+,   module("cachefiles").function("*").return
+,   module("ceph").function("*").return
+,   kernel.function("*vfs*").return
+,   kernel.function("*@./mm/filemap.c").return
+{
+    if (flow[tid()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
+
+
+probe   kernel.function("vfs_getxattr")
+{
+    if (flow[tid()])
+        printf("%s -> %p\n", kernel_string($name), kernel_pointer($value));
+}
