@@ -1,0 +1,77 @@
+#!/usr/bin/env stap
+
+global flow ;
+
+probe	kernel.function("do_sys_open")
+,	kernel.function("ksys_read")
+,	kernel.function("ksys_write")
+,	kernel.function("ksys_mount")
+,	kernel.function("__x64_sys_finit_module")
+{
+	if (execname() == "cat" || execname() == "dd" 
+			|| execname() == "mount"
+			|| execname() == "a.out"
+			|| execname() == "modprobe") { 
+		printf("%s\n", $$parms$$) ;
+		printf("%s -> %s\n", thread_indent(4), ppfunc());	
+		flow[task_current()] = 1 ;
+	}
+}
+
+probe   kernel.function("*@fs/*.c").call
+,   kernel.function("*@block/blk-core.c").call
+,   kernel.function("*@block/bounce.c").call
+,   kernel.function("*@block/elevator.c").call
+,   kernel.function("*@block/*-iosched.c").call
+,   kernel.function("*@block/blk-softirq.c").call
+,   kernel.function("*@mm/filemap.c").call
+,   kernel.function("*@mm/readahead.c").call
+,   kernel.function("*@mm/page_io.c").call
+,   kernel.function("*@mm/page-writeback.c").call
+,   kernel.function("*@drivers/scsi/*.c").call
+,   module("xfs").function("*@fs/xfs/xfs_aops.c").call
+,   module("xfs").function("*@fs/xfs/xfs_file.c").call
+,   module("xfs").function("*@fs/xfs/xfs_super.c").call
+,   module("xfs").function("*@fs/xfs/xfs_inode.c").call
+,   module("xfs").function("*@fs/xfs/xfs_fsops.c").call
+,   module("xfs").function("*@fs/xfs/xfs_iops.c").call
+,   module("xfs").function("*@fs/xfs/xfs_mount.c").call
+{
+	if (flow[task_current()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc()) ;
+}
+
+probe   kernel.function("*@fs/*.c").return
+,   kernel.function("*@block/blk-core.c").return
+,   kernel.function("*@block/bounce.c").return
+,   kernel.function("*@block/elevator.c").return
+,   kernel.function("*@block/*-iosched.c").return
+,   kernel.function("*@block/blk-softirq.c").return
+,   kernel.function("*@mm/filemap.c").return
+,   kernel.function("*@mm/readahead.c").return
+,   kernel.function("*@mm/page_io.c").return
+,   kernel.function("*@mm/page-writeback.c").return
+,   kernel.function("*@drivers/scsi/*.c").return
+,   module("xfs").function("*@fs/xfs/xfs_aops.c").return
+,   module("xfs").function("*@fs/xfs/xfs_file.c").return
+,   module("xfs").function("*@fs/xfs/xfs_super.c").return
+,   module("xfs").function("*@fs/xfs/xfs_inode.c").return
+,   module("xfs").function("*@fs/xfs/xfs_fsops.c").return
+,   module("xfs").function("*@fs/xfs/xfs_iops.c").return
+,   module("xfs").function("*@fs/xfs/xfs_mount.c").return
+{
+    if (flow[task_current()]) 
+        printf("%s <- %s\n", thread_indent(-4), ppfunc()) ;
+}
+
+probe   kernel.function("do_sys_open").return
+,   kernel.function("ksys_read").return
+,   kernel.function("ksys_write").return
+,   kernel.function("ksys_mount").return
+,	kernel.function("__x64_sys_finit_module").return
+{
+    if (flow[task_current()]) {
+        flow[task_current()] = 0 ;
+    }
+}
+

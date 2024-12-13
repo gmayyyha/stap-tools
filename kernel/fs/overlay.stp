@@ -1,0 +1,77 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe	kernel.function("do_sys_open")
+#,	kernel.function("ksys_write")
+{
+	if (execname() == "a.out") {
+		flow[task_current()] ++;
+	}
+}
+
+probe	kernel.function("do_sys_open").return
+#,	kernel.function("ksys_write").return
+{
+	if (flow[task_current()]) {
+		flow[task_current()] --;
+	}
+}
+
+probe	module("overlay").function("*").call
+,	module("xfs").function("*@fs/xfs/xfs_file.c").call
+,	module("ext4").function("*@fs/ext4/file.c").call
+,	kernel.function("*@fs/read_write.c").call
+,	kernel.function("*@fs/splice.c").call
+,	kernel.function("*@fs/open.c").call
+,	kernel.function("*@fs/dcache.c").call
+,	kernel.function("*@fs/namei.c").call
+,	kernel.function("*@mm/filemap.c").call
+{
+	if (flow[task_current()])
+		printf("%s -> %s\n", thread_indent(4), ppfunc());
+}
+
+probe	module("overlay").function("*").return
+,	module("xfs").function("*@fs/xfs/xfs_file.c").return
+,	module("ext4").function("*@fs/ext4/file.c").return
+,	kernel.function("*@fs/read_write.c").return
+,	kernel.function("*@fs/splice.c").return
+,	kernel.function("*@fs/open.c").return
+,	kernel.function("*@fs/dcache.c").return
+,	kernel.function("*@fs/namei.c").return
+,	kernel.function("*@mm/filemap.c").return
+{
+	if (flow[task_current()])
+		printf("%s <- %s\n", thread_indent(-4), ppfunc());
+}
+
+/*
+*/
+probe	kernel.function("vfs_link")
+{
+	if (execname() == "a.out") {
+		printf("%s %s -> %s/%s\n", ppfunc(), d_name($old_dentry), inode_path($dir), d_name($new_dentry));
+	}
+	
+}
+
+probe	kernel.function("generic_perform_write")
+{
+	if (execname() == "a.out") {
+		printf("%s %s\n", ppfunc(), inode_path($file->f_inode));
+	}
+	
+}
+
+probe	kernel.function("generic_file_read_iter")
+{
+	if (execname() == "a.out") {
+		printf("%s %s\n", ppfunc(), inode_path($iocb->ki_filp->f_inode));
+	}
+}
+
+probe	module("overlay").function("ovl_copy_up_data")
+{
+	printf("%d\n", $len);
+}

@@ -1,0 +1,64 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe   module("nfs").function("nfs_file_read")
+,   module("nfs").function("nfs_file_write")
+,   module("nfs").function("nfs_atomic_open")
+,   module("nfs").function("nfs_rename")
+,   module("fscache").function("fscache_op_work_func")
+,   module("fscache").function("fscache_object_work_func")
+{
+    flow[tid()] = 1;
+}
+
+probe   module("nfs").function("nfs_file_read").return
+,   module("nfs").function("nfs_file_write").return
+,   module("nfs").function("nfs_atomic_open").return
+,   module("nfs").function("nfs_rename").return
+,   module("fscache").function("fscache_op_work_func").return
+,   module("fscache").function("fscache_object_work_func").return
+{
+    if (flow[tid()]) {
+        flow[tid()] = 0;
+    }
+}
+
+probe   module("fscache").function("*").call
+,   module("cachefiles").function("*").call
+,   module("nfs").function("*").call
+,   module("nfsv4").function("*").call
+,   module("xfs").function("*bmap").call
+,   kernel.function("*vfs*").call
+,   kernel.function("*@./mm/filemap.c").call
+{
+    if (flow[tid()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+    }
+}
+
+probe   module("fscache").function("*").return
+,   module("cachefiles").function("*").return
+,   module("nfs").function("*").return
+,   module("nfsv4").function("*").return
+,   module("xfs").function("*bmap").return
+,   kernel.function("*vfs*").return
+,   kernel.function("*@./mm/filemap.c").return
+{
+    if (flow[tid()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
+
+
+probe   kernel.function("vfs_getxattr")
+{
+    if (flow[tid()])
+        printf("%s -> %p\n", kernel_string($name), kernel_pointer($value));
+}
+
+probe   kernel.function("generic_file_read_iter")
+{
+    if (flow[tid()])
+        printf("%s -> %d\n", ppfunc(), $iter->count);
+}

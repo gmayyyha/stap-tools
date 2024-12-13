@@ -1,0 +1,59 @@
+#!/usr/bin/env stap
+
+global flow;
+
+probe
+	module("ext4").function("ext4_file_write_iter")
+#,       module("xfs").function("xfs_file_write_iter")
+#,       module("xfs").function("xfs_file_read_iter")
+,       module("fuse").function("fuse_file_write_iter")
+,       module("fuse").function("fuse_file_read_iter")
+,	kernel.function("do_splice")
+{
+    flow[tid()] = 1;
+}
+
+probe
+	module("ext4").function("ext4_file_write_iter").return
+#,       module("xfs").function("xfs_file_write_iter").return
+#,       module("xfs").function("xfs_file_read_iter").return
+,       module("fuse").function("fuse_file_write_iter").return
+,       module("fuse").function("fuse_file_read_iter").return
+,	kernel.function("do_splice").return
+{
+    if (flow[tid()])
+        flow[tid()] = 0;
+}
+
+probe   module("ext4").function("*").call
+,       module("xfs").function("*").call
+,       module("fuse").function("*").call
+,       kernel.function("*@mm/filemap.c").call
+,       kernel.function("*@mm/page_alloc.c").call
+,       kernel.function("*@lib/iov_iter.c").call
+,       kernel.function("*@fs/iomap.c").call
+{
+    if (flow[tid()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc());
+    }
+}
+
+probe   module("ext4").function("*").return
+,       module("xfs").function("*").return
+,       module("fuse").function("*").return
+,       kernel.function("*@mm/filemap.c").return
+,       kernel.function("*@mm/page_alloc.c").return
+,       kernel.function("*@lib/iov_iter.c").return
+,       kernel.function("*@fs/iomap.c").return
+{
+    if (flow[tid()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
+
+
+probe kernel.function("get_page_from_freelist").return
+{
+    if (flow[tid()])
+        printf("%s\n", kernel_string($ac->preferred_zoneref->zone->name));
+}

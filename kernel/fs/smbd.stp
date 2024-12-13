@@ -1,0 +1,31 @@
+global flow;
+
+probe   process("smbd").library("libtevent*").function("epoll_event_loop_once")
+{
+    if (execname() == "smbd") {
+        printf("%s -> %s\n", thread_indent(4), ppfunc())
+        flow[tid()] = 1;
+    }
+}
+
+probe   process("smbd").library("libtevent*").function("epoll_event_loop_once").return
+{
+    if (flow[tid()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+        flow[tid()] = 0;
+    }
+}
+
+probe   process("smbd").library("libsmbd-base.so*").function("*").call
+{
+    if (flow[tid()]) {
+        printf("%s -> %s\n", thread_indent(4), ppfunc())
+    }
+}
+
+probe   process("smbd").library("libsmbd-base.so*").function("*").return
+{
+    if (flow[tid()]) {
+        printf("%s <- %s\n", thread_indent(-4), ppfunc());
+    }
+}
